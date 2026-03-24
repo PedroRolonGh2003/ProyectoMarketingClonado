@@ -1,7 +1,1 @@
-{
-  "/api/login/route": "app/api/login/route.js",
-  "/api/admin/delegados/detalle/route": "app/api/admin/delegados/detalle/route.js",
-  "/api/admin/defensas/route": "app/api/admin/defensas/route.js",
-  "/login/page": "app/login/page.js",
-  "/admin/page": "app/admin/page.js"
-}
+{}
