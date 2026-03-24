@@ -3,34 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "preinstall": "cd backend && npm install",
-    "start": "npm-run-all --parallel servidor interfaz",
-    "servidor": "node backend/server.js",
-    "interfaz": "react-scripts start",
-    "build": "react-scripts build"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "@types/node": "^16.18.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
-    "typescript": "^4.9.5"
+    "mysql2": "^3.11.0",
+    "next": "^14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "npm-run-all": "^4.1.5"
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.0"
   }
 }

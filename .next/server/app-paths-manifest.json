@@ -1,6 +1,7 @@
 {
-  "/_global-error/page": "app/_global-error/page.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/page": "app/page.js"
+  "/api/login/route": "app/api/login/route.js",
+  "/api/admin/delegados/detalle/route": "app/api/admin/delegados/detalle/route.js",
+  "/api/admin/defensas/route": "app/api/admin/defensas/route.js",
+  "/login/page": "app/login/page.js",
+  "/admin/page": "app/admin/page.js"
 }
