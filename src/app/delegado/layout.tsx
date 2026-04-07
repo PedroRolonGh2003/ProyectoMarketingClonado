@@ -3,8 +3,13 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import PushSubscribe from "@/components/pwa/PushSubscribe";
 
-export default function DelegadoLayout({ children }: { children: React.ReactNode }) {
+export default function DelegadoLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { usuario, loading } = useAuth();
   const router = useRouter();
 
@@ -16,14 +21,16 @@ export default function DelegadoLayout({ children }: { children: React.ReactNode
 
   if (loading || !usuario || usuario.rol !== 1) {
     return (
-      <div
-        className="page-bg"
-        style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}
-      >
+      <div className="page-bg page-loading">
         <p>Cargando...</p>
       </div>
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <PushSubscribe usuarioId={usuario.id} />
+      {children}
+    </>
+  );
 }

@@ -1,3 +1,4 @@
+// src\app\api\admin\defensas\route.ts
 import { NextResponse } from "next/server";
 import { getAdminDefensas } from "@/server/defensas";
 

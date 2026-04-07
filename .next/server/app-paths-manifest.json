@@ -1,6 +1,10 @@
 {
-  "/signup/page": "app/signup/page.js",
-  "/login/page": "app/login/page.js",
-  "/admin/page": "app/admin/page.js",
-  "/admin/delegados/page": "app/admin/delegados/page.js"
+  "/manifest.webmanifest/route": "app/manifest.webmanifest/route.js",
+  "/api/admin/delegados/detalle/route": "app/api/admin/delegados/detalle/route.js",
+  "/api/defensas/[id]/route": "app/api/defensas/[id]/route.js",
+  "/api/admin/defensas/[idDefensa]/recordatorio/route": "app/api/admin/defensas/[idDefensa]/recordatorio/route.js",
+  "/api/admin/defensas/route": "app/api/admin/defensas/route.js",
+  "/admin/defensas/page": "app/admin/defensas/page.js",
+  "/delegado/page": "app/delegado/page.js",
+  "/delegado/nuevas/page": "app/delegado/nuevas/page.js"
 }

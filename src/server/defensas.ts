@@ -20,7 +20,7 @@ export async function getDefensasDelegado(idDelegado: string) {
      JOIN Estudiante     e  ON pt.idEstudiante = e.idEstudiante
      WHERE ad.idDelegado = ?
      ORDER BY d.fecha DESC`,
-    [idDelegado]
+    [idDelegado],
   );
   return rows;
 }
@@ -39,7 +39,7 @@ export async function getDefensasLista() {
      FROM Defensa     d
      JOIN PerfilTesis pt ON d.idPerfil      = pt.idPerfil
      JOIN Estudiante  e  ON pt.idEstudiante = e.idEstudiante
-     ORDER BY d.fecha DESC`
+     ORDER BY d.fecha DESC`,
   );
   return rows;
 }
@@ -52,13 +52,14 @@ export async function getAdminDefensas() {
        pt.titulo,
        e.nombre AS nombreEstudiante, e.apellido AS apellidoEstudiante,
        ad.idAsignacion, ad.estado AS estadoAsignacion,
-       u.nombre AS nombreDelegado, u.apellido AS apellidoDelegado
+       u.nombre AS nombreDelegado, u.apellido AS apellidoDelegado,
+       u.idUsuario AS idDelegado
      FROM Defensa d
      JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
      JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
      LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
      LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
-     ORDER BY d.fecha DESC`
+     ORDER BY d.fecha DESC`,
   );
   return rows;
 }
@@ -74,19 +75,19 @@ export async function crearDefensa(body: {
   const pool = getPool();
   const [estResult] = await pool.query(
     "INSERT INTO Estudiante (nombre, apellido) VALUES (?, ?)",
-    [estudianteNombre, estudianteApellido]
+    [estudianteNombre, estudianteApellido],
   );
   const idEstudiante = (estResult as ResultSetHeader).insertId;
 
   const [perfResult] = await pool.query(
     "INSERT INTO PerfilTesis (idEstudiante, titulo) VALUES (?, ?)",
-    [idEstudiante, titulo]
+    [idEstudiante, titulo],
   );
   const idPerfil = (perfResult as ResultSetHeader).insertId;
 
   await pool.query(
     "INSERT INTO Defensa (idPerfil, fecha, lugar, estado) VALUES (?, ?, ?, 'pendiente')",
-    [idPerfil, fecha, lugar]
+    [idPerfil, fecha, lugar],
   );
 }
 
@@ -99,18 +100,18 @@ export async function asignarDelegado(idDefensa: string, idDelegado: number) {
   const pool = getPool();
   const [existing] = await pool.query(
     "SELECT idAsignacion FROM AsignacionDelegado WHERE idDefensa = ?",
-    [idDefensa]
+    [idDefensa],
   );
   const rows = existing as { idAsignacion: number }[];
   if (rows.length > 0) {
     await pool.query(
       "UPDATE AsignacionDelegado SET idDelegado = ?, estado = 'pendiente' WHERE idDefensa = ?",
-      [idDelegado, idDefensa]
+      [idDelegado, idDefensa],
     );
   } else {
     await pool.query(
       "INSERT INTO AsignacionDelegado (idDefensa, idDelegado, estado) VALUES (?, ?, 'pendiente')",
-      [idDefensa, idDelegado]
+      [idDefensa, idDelegado],
     );
   }
 }
