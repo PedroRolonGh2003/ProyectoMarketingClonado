@@ -4,14 +4,14 @@ import RegisterSW from "@/components/pwa/RegisterSW";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Col Marketing",
-  description: "Sistema de gestión de defensas de tesis",
+  title: "Colegio de Marketing",
+  description: "Sistema de gestión de defensas",
   manifest: "/manifest.json",
   themeColor: "#133B63",
   icons: [
-    { rel: "icon", url: "/favicon.ico" },
-    { rel: "apple-touch-icon", url: "/logo192.png" },
-    { rel: "apple-touch-icon", url: "/logo512.png" },
+    { rel: "icon", url: "/LogoColMarketing.jpg" },
+    { rel: "apple-touch-icon", url: "/LogoColMarketing.jpg" },
+    { rel: "apple-touch-icon", url: "/LogoColMarketing.jpg" },
   ],
 };
 

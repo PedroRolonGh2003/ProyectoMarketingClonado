@@ -2210,7 +2210,6 @@ function AdminSidebar({
     { key: "admin_dashboard", label: "Dashboard", ico: icons.home },
     { key: "admin_defensas", label: "Gestión de Defensas", ico: icons.doc },
     { key: "admin_delegados", label: "Gestión de Delegados", ico: icons.users },
-    { key: "admin_invitaciones", label: "Invitaciones", ico: icons.mail },
     { key: "admin_pagos", label: "Pagos Pendientes", ico: icons.dollar },
   ];
   return (

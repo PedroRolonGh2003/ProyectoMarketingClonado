@@ -1,10 +1,11 @@
+//src/lib/db.ts
 import mysql from "mysql2/promise";
 
 function requiredEnv(name: string) {
   const value = process.env[name];
   if (!value) {
     throw new Error(
-      `Falta variable de entorno ${name}. Configura DB_HOST, DB_PORT, DB_USER, DB_PASSWORD y DB_NAME en .env.local.`
+      `Falta variable de entorno ${name}. Configura DB_HOST, DB_PORT, DB_USER, DB_PASSWORD y DB_NAME en .env.local.`,
     );
   }
   return value;

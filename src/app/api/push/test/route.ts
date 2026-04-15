@@ -1,4 +1,4 @@
-// src\app\api\push\test\route.ts
+// src/app/api/push/test/route.ts
 import { NextResponse } from "next/server";
 import { obtenerSuscripcionesUsuario } from "@/server/push";
 import { sendPushNotification } from "@/lib/webpush";
@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     }
 
     const subs = await obtenerSuscripcionesUsuario(usuarioId);
+
     if (subs.length === 0) {
       return NextResponse.json(
         {
@@ -34,6 +35,8 @@ export async function POST(request: Request) {
       body:
         body.body || "Tienes defensas pendientes. Abre la app para revisarlas.",
       url: body.url || "/delegado/pendientes",
+      icon: "/LogoColMarketing.jpg",
+      badge: "/LogoColMarketing.jpg",
     };
 
     const results = await Promise.allSettled(

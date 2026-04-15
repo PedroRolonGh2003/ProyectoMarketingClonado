@@ -1,3 +1,4 @@
+//src/server/auth.ts
 import { getPool } from "@/lib/db";
 import { comparePassword } from "@/lib/password";
 import type { UsuarioSesion } from "@/types";
