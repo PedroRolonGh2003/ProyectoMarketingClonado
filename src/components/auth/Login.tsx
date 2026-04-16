@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import { loginSchema, recuperarSchema, resetPasswordSchema } from "@/lib/schemas";
+import { ZodError } from "zod";
 
 type Vista = "login" | "recuperar" | "codigo";
 
@@ -27,6 +29,9 @@ export default function Login() {
     e.preventDefault();
     setError(""); setLoading(true);
     try {
+      // Validar con Zod
+      loginSchema.parse({ correo, password });
+
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -40,8 +45,12 @@ export default function Login() {
       } else {
         setError(data.mensaje || data.error || "Error al iniciar sesión");
       }
-    } catch {
-      setError("No se pudo conectar con el servidor");
+    } catch (err) {
+      if (err instanceof ZodError) {
+        setError(err.issues[0].message);
+      } else {
+        setError("No se pudo conectar con el servidor");
+      }
     } finally { setLoading(false); }
   };
 
@@ -50,6 +59,9 @@ export default function Login() {
     e.preventDefault();
     setMsg(""); setError(""); setLoading(true);
     try {
+      // Validar con Zod
+      recuperarSchema.parse({ correo });
+
       const res  = await fetch("/api/recuperar-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,19 +73,24 @@ export default function Login() {
       } else {
         setError(data.mensaje || data.error || "Error al enviar el código");
       }
-    } catch {
-      setError("No se pudo conectar con el servidor");
+    } catch (err) {
+      if (err instanceof ZodError) {
+        setError(err.issues[0].message);
+      } else {
+        setError("No se pudo conectar con el servidor");
+      }
     } finally { setLoading(false); }
   };
 
   // ── Verificar código y cambiar contraseña ──────────
   const handleCodigo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (nuevaPass !== confirmaPass) { setError("Las contraseñas no coinciden"); return; }
-    if (nuevaPass.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
-    if (codigo.length !== 6) { setError("El código debe tener 6 dígitos"); return; }
     setLoading(true); setError("");
     try {
+      // Validar con Zod
+      resetPasswordSchema.parse({ codigo, nuevaPassword: nuevaPass });
+      if (nuevaPass !== confirmaPass) { throw new Error("Las contraseñas no coinciden"); }
+
       const res  = await fetch("/api/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,8 +106,12 @@ export default function Login() {
       } else {
         setError(data.mensaje || "Código incorrecto o expirado");
       }
-    } catch {
-      setError("No se pudo conectar con el servidor");
+    } catch (err: any) {
+      if (err instanceof ZodError) {
+        setError(err.issues[0].message);
+      } else {
+        setError(err.message || "No se pudo conectar con el servidor");
+      }
     } finally { setLoading(false); }
   };
 

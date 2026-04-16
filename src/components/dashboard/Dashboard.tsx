@@ -1,4 +1,4 @@
-﻿// src\components\dashboard\Dashboard.tsx
+// src\components\dashboard\Dashboard.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,6 +10,13 @@ import {
   navFromAdminPath,
   navFromDelegadoPath,
 } from "@/lib/routes";
+import { 
+  changePasswordSchema, 
+  defensaSchema, 
+  evidenciaSchema, 
+  signupSchema 
+} from "@/lib/schemas";
+import { ZodError } from "zod";
 import "./Dashboard.css";
 
 const API = "/api";
@@ -704,6 +711,7 @@ function VistaEvidencia({
   const [pdf, setPdf] = useState<File | null>(null);
   const [comentarios, setComent] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   return (
     <>
       <Topbar usuario={usuario} />
@@ -762,14 +770,31 @@ function VistaEvidencia({
             value={comentarios}
             onChange={(e) => setComent(e.target.value)}
           />
+          {error && <p className="form__error">{error}</p>}
         </div>
         <button
           className="btn-primary btn-primary--full"
           disabled={loading}
           onClick={async () => {
-            setLoading(true);
-            await onEnviar({ defensa, imagen, pdf, comentarios });
-            setLoading(false);
+            setError("");
+            try {
+              // Validar con Zod
+              evidenciaSchema.parse({
+                tieneImagen: !!imagen,
+                tienePdf: !!pdf,
+                comentarios
+              });
+
+              setLoading(true);
+              await onEnviar({ defensa, imagen, pdf, comentarios });
+              setLoading(false);
+            } catch (err: any) {
+              if (err instanceof ZodError) {
+                setError(err.issues[0].message);
+              } else {
+                setError("Error al enviar evidencia");
+              }
+            }
           }}
         >
           {loading ? (
@@ -868,25 +893,33 @@ function VistaPerfil({
   const [passMsg, setPassMsg] = useState("");
 
   const handleChangePass = async () => {
-    if (passForm.nueva !== passForm.confirmar) {
-      setPassMsg("Las contraseñas no coinciden");
-      return;
-    }
-    const res = await fetch(`${API}/usuario/${usuario.id}/password`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actual: passForm.actual, nueva: passForm.nueva }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      setPassMsg("Contraseña actualizada ✓");
-      setTimeout(() => {
-        setModalPass(false);
-        setPassMsg("");
-        setPassForm({ actual: "", nueva: "", confirmar: "" });
-      }, 1500);
-    } else {
-      setPassMsg(data.mensaje || "Error");
+    setPassMsg("");
+    try {
+      // Validar con Zod
+      changePasswordSchema.parse(passForm);
+
+      const res = await fetch(`${API}/usuario/${usuario.id}/password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actual: passForm.actual, nueva: passForm.nueva }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPassMsg("Contraseña actualizada ✓");
+        setTimeout(() => {
+          setModalPass(false);
+          setPassMsg("");
+          setPassForm({ actual: "", nueva: "", confirmar: "" });
+        }, 1500);
+      } else {
+        setPassMsg(data.mensaje || "Error");
+      }
+    } catch (err) {
+      if (err instanceof ZodError) {
+        setPassMsg(err.issues[0].message);
+      } else {
+        setPassMsg("Error de conexión");
+      }
     }
   };
 
@@ -1523,8 +1556,18 @@ function VistaAdminCrearDefensa({
   const handleCrear = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg("");
-    setLoading(true);
     try {
+      // Validar con Zod
+      defensaSchema.parse({
+        estudianteNombre: form.nombreEstudiante,
+        estudianteApellido: form.apellidoEstudiante,
+        titulo: form.titulo,
+        fecha: form.fecha,
+        hora: form.hora,
+        lugar: form.lugar
+      });
+
+      setLoading(true);
       const iso =
         form.fecha && form.hora
           ? new Date(`${form.fecha}T${form.hora}:00`)
@@ -1549,8 +1592,12 @@ function VistaAdminCrearDefensa({
         setMsg("Defensa creada ✓");
         setTimeout(() => onCreada(), 1000);
       }
-    } catch {
-      setMsg("Sin conexión");
+    } catch (err) {
+      if (err instanceof ZodError) {
+        setMsg(err.issues[0].message);
+      } else {
+        setMsg("Sin conexión");
+      }
     } finally {
       setLoading(false);
     }
@@ -1576,15 +1623,27 @@ function VistaAdminCrearDefensa({
             Los campos marcados con * son obligatorios
           </p>
 
-          <div className="form__group mb-14">
-            <label className="form__label">Nombre del estudiante *</label>
-            <input
-              className="form__input"
-              placeholder="Ej. María González Pérez"
-              value={form.nombreEstudiante}
-              onChange={set("nombreEstudiante")}
-              required
-            />
+          <div className="grid-2 mb-14">
+            <div className="form__group">
+              <label className="form__label">Nombre del estudiante *</label>
+              <input
+                className="form__input"
+                placeholder="Ej. María"
+                value={form.nombreEstudiante}
+                onChange={set("nombreEstudiante")}
+                required
+              />
+            </div>
+            <div className="form__group">
+              <label className="form__label">Apellido del estudiante *</label>
+              <input
+                className="form__input"
+                placeholder="Ej. González Pérez"
+                value={form.apellidoEstudiante}
+                onChange={set("apellidoEstudiante")}
+                required
+              />
+            </div>
           </div>
           <div className="form__group mb-14">
             <label className="form__label">Título o perfil de tesis *</label>
@@ -1741,7 +1800,17 @@ function VistaAdminDelegados() {
   }, []);
 
   const save = async () => {
+    setError("");
     try {
+      // Validar con Zod (reutilizamos signupSchema sin Confirmar ya que es gestión interna)
+      // Pero mejor una validación específica rápida aquí o usar signupSchema ajustado
+      if (!form.nombre || !form.apellido || !form.correo) {
+         throw new Error("Nombre, apellido y correo son obligatorios");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) {
+         throw new Error("Correo inválido");
+      }
+
       if (modal?.mode === "new") {
         const res = await fetch(`${API}/admin/delegados`, {
           method: "POST",

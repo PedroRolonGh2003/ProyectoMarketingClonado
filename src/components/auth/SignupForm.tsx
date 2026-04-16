@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signupSchema } from "@/lib/schemas";
+import { ZodError } from "zod";
 import "./Login.css";
 
 interface SignupFormProps {
@@ -25,33 +27,19 @@ export default function SignupForm({ token }: SignupFormProps) {
     setError("");
     setSuccess("");
 
-    if (
-      [nombre, apellido, correo, password, passwordConfirm].some(
-        (v) => !v.trim(),
-      )
-    ) {
-      setError("Completa todos los campos obligatorios");
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
-      setError("Correo inválido");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres");
-      return;
-    }
-
-    if (password !== passwordConfirm) {
-      setError("Las contraseñas no coinciden");
-      return;
-    }
-
-    setLoading(true);
-
     try {
+      // Validar con Zod
+      signupSchema.parse({
+        nombre,
+        apellido,
+        correo,
+        telefono,
+        password,
+        passwordConfirm,
+      });
+
+      setLoading(true);
+
       const response = await fetch("/api/signup/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,7 +63,11 @@ export default function SignupForm({ token }: SignupFormProps) {
         setError(data.mensaje || "Error en registro");
       }
     } catch (err) {
-      setError("Error de conexión al servidor");
+      if (err instanceof ZodError) {
+        setError(err.issues[0].message);
+      } else {
+        setError("Error de conexión al servidor");
+      }
     } finally {
       setLoading(false);
     }

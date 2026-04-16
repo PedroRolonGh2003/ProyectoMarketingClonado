@@ -1,4 +1,5 @@
 {
-  "/manifest.webmanifest/route": "app/manifest.webmanifest/route.js",
-  "/admin/defensas/nueva/page": "app/admin/defensas/nueva/page.js"
+  "/login/page": "app/login/page.js",
+  "/delegado/nuevas/page": "app/delegado/nuevas/page.js",
+  "/delegado/perfil/page": "app/delegado/perfil/page.js"
 }
