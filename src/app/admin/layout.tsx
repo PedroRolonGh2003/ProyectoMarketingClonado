@@ -1,0 +1,30 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/providers/AuthProvider";
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { usuario, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!usuario) router.replace("/login");
+    else if (usuario.rol !== 0) router.replace("/delegado");
+  }, [usuario, loading, router]);
+
+  if (loading || !usuario || usuario.rol !== 0) {
+    return (
+      <div className="page-bg loading-center">
+        <p>Cargando...</p>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
