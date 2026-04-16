@@ -31,9 +31,11 @@ export async function crearDelegado(body: {
   password: string;
 }) {
   const pool = getPool();
+  const { hashPassword } = await import("@/lib/password");
+  const hashContrasena = await hashPassword(body.password);
   await pool.query(
     "INSERT INTO Usuario (rol, nombre, apellido, correo, telefono, hashContrasena) VALUES (1, ?, ?, ?, ?, ?)",
-    [body.nombre, body.apellido, body.correo, body.telefono || null, body.password]
+    [body.nombre, body.apellido, body.correo, body.telefono || null, hashContrasena]
   );
 }
 
@@ -49,9 +51,11 @@ export async function editarDelegado(
 ) {
   const pool = getPool();
   if (body.password) {
+    const { hashPassword } = await import("@/lib/password");
+    const hashContrasena = await hashPassword(body.password);
     await pool.query(
       "UPDATE Usuario SET nombre=?, apellido=?, correo=?, telefono=?, hashContrasena=? WHERE idUsuario=?",
-      [body.nombre, body.apellido, body.correo, body.telefono || null, body.password, id]
+      [body.nombre, body.apellido, body.correo, body.telefono || null, hashContrasena, id]
     );
   } else {
     await pool.query(

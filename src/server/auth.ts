@@ -34,7 +34,11 @@ export async function loginUsuario(
   const usuario = list[0];
   const hashGuardado = String(usuario.hashContrasena ?? "");
 
-  const coincide = await comparePassword(passNorm, hashGuardado);
+  // Soporta contraseñas bcrypt (empiezan con $2) y texto plano (legado)
+  const esBcrypt = hashGuardado.startsWith("$2");
+  const coincide = esBcrypt
+    ? await comparePassword(passNorm, hashGuardado)
+    : passNorm === hashGuardado;
 
   if (!coincide) {
     return { ok: false, mensaje: "Correo o contraseña incorrectos" };

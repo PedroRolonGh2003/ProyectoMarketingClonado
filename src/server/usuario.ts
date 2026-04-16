@@ -32,16 +32,22 @@ export async function cambiarPassword(
 ) {
   const pool = getPool();
   const [rows] = await pool.query(
-    "SELECT idUsuario FROM Usuario WHERE idUsuario = ? AND hashContrasena = ?",
-    [id, actual],
+    "SELECT hashContrasena FROM Usuario WHERE idUsuario = ?",
+    [id],
   );
-  const list = rows as { idUsuario: number }[];
+  const list = rows as { hashContrasena: string }[];
   if (list.length === 0) {
+    return { ok: false as const, mensaje: "Usuario no encontrado" };
+  }
+  const { comparePassword, hashPassword } = await import("@/lib/password");
+  const coincide = await comparePassword(actual, list[0].hashContrasena);
+  if (!coincide) {
     return { ok: false as const, mensaje: "Contraseña actual incorrecta" };
   }
+  const nuevoHash = await hashPassword(nueva);
   await pool.query(
     "UPDATE Usuario SET hashContrasena = ? WHERE idUsuario = ?",
-    [nueva, id],
+    [nuevoHash, id],
   );
   return { ok: true as const };
 }
