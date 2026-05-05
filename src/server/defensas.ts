@@ -91,6 +91,37 @@ export async function crearDefensa(body: {
   );
 }
 
+export async function actualizarDefensa(
+  id: string,
+  body: {
+    titulo: string;
+    nombreEstudiante: string;
+    apellidoEstudiante: string;
+    fecha: string;
+    lugar: string;
+    estado: string;
+  },
+) {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE Defensa d
+     JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
+     JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
+     SET d.fecha = ?, d.lugar = ?, d.estado = ?, pt.titulo = ?,
+         e.nombre = ?, e.apellido = ?
+     WHERE d.idDefensa = ?`,
+    [
+      body.fecha,
+      body.lugar,
+      body.estado,
+      body.titulo,
+      body.nombreEstudiante,
+      body.apellidoEstudiante,
+      id,
+    ],
+  );
+}
+
 export async function eliminarDefensa(id: string) {
   const pool = getPool();
   await pool.query("DELETE FROM Defensa WHERE idDefensa = ?", [id]);

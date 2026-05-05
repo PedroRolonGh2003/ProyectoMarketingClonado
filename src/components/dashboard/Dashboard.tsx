@@ -1,4 +1,4 @@
-// src\components\dashboard\Dashboard.tsx
+﻿// src\components\dashboard\Dashboard.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,13 +10,6 @@ import {
   navFromAdminPath,
   navFromDelegadoPath,
 } from "@/lib/routes";
-import { 
-  changePasswordSchema, 
-  defensaSchema, 
-  evidenciaSchema, 
-  signupSchema 
-} from "@/lib/schemas";
-import { ZodError } from "zod";
 import "./Dashboard.css";
 
 const API = "/api";
@@ -711,7 +704,6 @@ function VistaEvidencia({
   const [pdf, setPdf] = useState<File | null>(null);
   const [comentarios, setComent] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   return (
     <>
       <Topbar usuario={usuario} />
@@ -770,31 +762,14 @@ function VistaEvidencia({
             value={comentarios}
             onChange={(e) => setComent(e.target.value)}
           />
-          {error && <p className="form__error">{error}</p>}
         </div>
         <button
           className="btn-primary btn-primary--full"
           disabled={loading}
           onClick={async () => {
-            setError("");
-            try {
-              // Validar con Zod
-              evidenciaSchema.parse({
-                tieneImagen: !!imagen,
-                tienePdf: !!pdf,
-                comentarios
-              });
-
-              setLoading(true);
-              await onEnviar({ defensa, imagen, pdf, comentarios });
-              setLoading(false);
-            } catch (err: any) {
-              if (err instanceof ZodError) {
-                setError(err.issues[0].message);
-              } else {
-                setError("Error al enviar evidencia");
-              }
-            }
+            setLoading(true);
+            await onEnviar({ defensa, imagen, pdf, comentarios });
+            setLoading(false);
           }}
         >
           {loading ? (
@@ -893,33 +868,25 @@ function VistaPerfil({
   const [passMsg, setPassMsg] = useState("");
 
   const handleChangePass = async () => {
-    setPassMsg("");
-    try {
-      // Validar con Zod
-      changePasswordSchema.parse(passForm);
-
-      const res = await fetch(`${API}/usuario/${usuario.id}/password`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actual: passForm.actual, nueva: passForm.nueva }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setPassMsg("Contraseña actualizada ✓");
-        setTimeout(() => {
-          setModalPass(false);
-          setPassMsg("");
-          setPassForm({ actual: "", nueva: "", confirmar: "" });
-        }, 1500);
-      } else {
-        setPassMsg(data.mensaje || "Error");
-      }
-    } catch (err) {
-      if (err instanceof ZodError) {
-        setPassMsg(err.issues[0].message);
-      } else {
-        setPassMsg("Error de conexión");
-      }
+    if (passForm.nueva !== passForm.confirmar) {
+      setPassMsg("Las contraseñas no coinciden");
+      return;
+    }
+    const res = await fetch(`${API}/usuario/${usuario.id}/password`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actual: passForm.actual, nueva: passForm.nueva }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setPassMsg("Contraseña actualizada ✓");
+      setTimeout(() => {
+        setModalPass(false);
+        setPassMsg("");
+        setPassForm({ actual: "", nueva: "", confirmar: "" });
+      }, 1500);
+    } else {
+      setPassMsg(data.mensaje || "Error");
     }
   };
 
@@ -1237,6 +1204,10 @@ function VistaAdminDefensas({
   const [busqueda, setBusqueda] = useState("");
   const [filtroDelegado, setFiltro] = useState("");
   const [modalAsignar, setModalAsignar] = useState<Defensa | null>(null);
+  const [modalVer, setModalVer] = useState<Defensa | null>(null);
+  const [editForm, setEditForm] = useState<Defensa | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editMsg, setEditMsg] = useState("");
   const [busqDelegado, setBusqDelegado] = useState("");
   const [delegadoSel, setDelegadoSel] = useState<Delegado | null>(null);
   const [msgAsignar, setMsgAsignar] = useState("");
@@ -1288,6 +1259,41 @@ function VistaAdminDefensas({
     if (!window.confirm("¿Eliminar esta defensa?")) return;
     await fetch(`${API}/defensas/${idDefensa}`, { method: "DELETE" });
     onRecargar();
+  };
+
+  const handleGuardarEdicion = async () => {
+    if (!editForm) return;
+    setEditLoading(true);
+    setEditMsg("");
+    try {
+      const res = await fetch(
+        `${API}/admin/defensas/${editForm.idDefensa}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            titulo: editForm.titulo,
+            nombreEstudiante: editForm.nombreEstudiante,
+            apellidoEstudiante: editForm.apellidoEstudiante,
+            fecha: editForm.fecha,
+            lugar: editForm.lugar,
+            estado: editForm.estado,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (data.ok) {
+        setModalVer(null);
+        setEditForm(null);
+        onRecargar();
+      } else {
+        setEditMsg(data.mensaje || "Error al guardar");
+      }
+    } catch {
+      setEditMsg("Sin conexión");
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const handleRecordatorio = async (idDefensa: number, idDelegado: number) => {
@@ -1447,7 +1453,15 @@ function VistaAdminDefensas({
                               Recordatorio
                             </button>
                           )}
-                          <button className="btn-icon" title="Ver">
+                          <button
+                            className="btn-icon"
+                            title="Ver / Editar"
+                            onClick={() => {
+                              setModalVer(d);
+                              setEditForm({ ...d });
+                              setEditMsg("");
+                            }}
+                          >
                             <Ico d={icons.eye} size={16} />
                           </button>
                         </div>
@@ -1460,6 +1474,92 @@ function VistaAdminDefensas({
           </div>
         )}
       </div>
+
+      {modalVer && editForm && (
+        <Modal
+          title="Detalle de defensa"
+          subtitle=""
+          onClose={() => { setModalVer(null); setEditForm(null); }}
+        >
+          <div className="modal__body">
+            <label className="form__label">Título</label>
+            <input
+              className="form__input mb-12"
+              value={editForm.titulo}
+              onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })}
+            />
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div>
+                <label className="form__label">Nombre estudiante</label>
+                <input
+                  className="form__input"
+                  value={editForm.nombreEstudiante}
+                  onChange={(e) => setEditForm({ ...editForm, nombreEstudiante: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="form__label">Apellido estudiante</label>
+                <input
+                  className="form__input"
+                  value={editForm.apellidoEstudiante}
+                  onChange={(e) => setEditForm({ ...editForm, apellidoEstudiante: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <label className="form__label mt-12">Fecha</label>
+            <input
+              className="form__input mb-12"
+              type="datetime-local"
+              value={editForm.fecha ? editForm.fecha.slice(0, 16) : ""}
+              onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
+            />
+
+            <label className="form__label">Lugar</label>
+            <input
+              className="form__input mb-12"
+              value={editForm.lugar}
+              onChange={(e) => setEditForm({ ...editForm, lugar: e.target.value })}
+            />
+
+            <label className="form__label">Estado</label>
+            <select
+              className="form__input mb-12"
+              value={editForm.estado}
+              onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })}
+            >
+              <option value="pendiente">Pendiente</option>
+              <option value="confirmada">Confirmada</option>
+              <option value="completada">Completada</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+
+            {editForm.nombreDelegado && (
+              <p className="text-muted" style={{ fontSize: "0.85rem" }}>
+                Delegado: {editForm.nombreDelegado} {editForm.apellidoDelegado}
+              </p>
+            )}
+
+            {editMsg && <p className="form__error mt-8">{editMsg}</p>}
+          </div>
+          <div className="modal__footer">
+            <button
+              className="btn-outline"
+              onClick={() => { setModalVer(null); setEditForm(null); }}
+            >
+              Cancelar
+            </button>
+            <button
+              className="btn-primary"
+              disabled={editLoading}
+              onClick={handleGuardarEdicion}
+            >
+              {editLoading ? "Guardando…" : "Guardar cambios"}
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {modalAsignar && (
         <Modal
@@ -1556,18 +1656,8 @@ function VistaAdminCrearDefensa({
   const handleCrear = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg("");
+    setLoading(true);
     try {
-      // Validar con Zod
-      defensaSchema.parse({
-        estudianteNombre: form.nombreEstudiante,
-        estudianteApellido: form.apellidoEstudiante,
-        titulo: form.titulo,
-        fecha: form.fecha,
-        hora: form.hora,
-        lugar: form.lugar
-      });
-
-      setLoading(true);
       const iso =
         form.fecha && form.hora
           ? new Date(`${form.fecha}T${form.hora}:00`)
@@ -1592,12 +1682,8 @@ function VistaAdminCrearDefensa({
         setMsg("Defensa creada ✓");
         setTimeout(() => onCreada(), 1000);
       }
-    } catch (err) {
-      if (err instanceof ZodError) {
-        setMsg(err.issues[0].message);
-      } else {
-        setMsg("Sin conexión");
-      }
+    } catch {
+      setMsg("Sin conexión");
     } finally {
       setLoading(false);
     }
@@ -1623,27 +1709,15 @@ function VistaAdminCrearDefensa({
             Los campos marcados con * son obligatorios
           </p>
 
-          <div className="grid-2 mb-14">
-            <div className="form__group">
-              <label className="form__label">Nombre del estudiante *</label>
-              <input
-                className="form__input"
-                placeholder="Ej. María"
-                value={form.nombreEstudiante}
-                onChange={set("nombreEstudiante")}
-                required
-              />
-            </div>
-            <div className="form__group">
-              <label className="form__label">Apellido del estudiante *</label>
-              <input
-                className="form__input"
-                placeholder="Ej. González Pérez"
-                value={form.apellidoEstudiante}
-                onChange={set("apellidoEstudiante")}
-                required
-              />
-            </div>
+          <div className="form__group mb-14">
+            <label className="form__label">Nombre del estudiante *</label>
+            <input
+              className="form__input"
+              placeholder="Ej. María González Pérez"
+              value={form.nombreEstudiante}
+              onChange={set("nombreEstudiante")}
+              required
+            />
           </div>
           <div className="form__group mb-14">
             <label className="form__label">Título o perfil de tesis *</label>
@@ -1800,17 +1874,7 @@ function VistaAdminDelegados() {
   }, []);
 
   const save = async () => {
-    setError("");
     try {
-      // Validar con Zod (reutilizamos signupSchema sin Confirmar ya que es gestión interna)
-      // Pero mejor una validación específica rápida aquí o usar signupSchema ajustado
-      if (!form.nombre || !form.apellido || !form.correo) {
-         throw new Error("Nombre, apellido y correo son obligatorios");
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) {
-         throw new Error("Correo inválido");
-      }
-
       if (modal?.mode === "new") {
         const res = await fetch(`${API}/admin/delegados`, {
           method: "POST",
