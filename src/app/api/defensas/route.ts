@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  buildFechaHoraISO,
+  parseEstudianteDesdeBody,
+} from "@/lib/defensa-form";
 import { crearDefensa, getDefensasLista } from "@/server/defensas";
 
 export const runtime = "nodejs";
@@ -15,15 +19,38 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const estudianteNombre = String(body.estudianteNombre ?? "").trim();
-    const estudianteApellido = String(body.estudianteApellido ?? "").trim();
+    const body = (await request.json()) as Record<string, unknown>;
+    const { nombre: estudianteNombre, apellido: estudianteApellido } =
+      parseEstudianteDesdeBody(body);
     const titulo = String(body.titulo ?? "").trim();
     const lugar = String(body.lugar ?? "").trim();
+    const fechaStr = String(body.fecha ?? "").trim();
+    const horaStr = String(body.hora ?? "").trim();
 
-    if (!estudianteNombre || !estudianteApellido || !titulo || !lugar) {
+    const faltantes: string[] = [];
+    if (!estudianteNombre) faltantes.push("nombre del estudiante");
+    if (!titulo) faltantes.push("título");
+    if (!lugar) faltantes.push("lugar");
+
+    if (faltantes.length > 0) {
       return NextResponse.json(
-        { ok: false, mensaje: "Faltan campos obligatorios" },
+        {
+          ok: false,
+          mensaje: `Faltan campos obligatorios: ${faltantes.join(", ")}`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const fecha =
+      fechaStr.includes(" ")
+        ? fechaStr
+        : buildFechaHoraISO(fechaStr, horaStr) ??
+          (body.fecha ? String(body.fecha).trim() : null);
+
+    if (!fecha) {
+      return NextResponse.json(
+        { ok: false, mensaje: "Fecha u hora inválida" },
         { status: 400 },
       );
     }
@@ -33,7 +60,7 @@ export async function POST(request: Request) {
       estudianteApellido,
       titulo,
       lugar,
-      fecha: body.fecha ?? null,
+      fecha,
       direccion: body.direccion ? String(body.direccion).trim() : null,
       observaciones: body.observaciones
         ? String(body.observaciones).trim()

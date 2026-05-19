@@ -10,6 +10,10 @@ import {
   navFromAdminPath,
   navFromDelegadoPath,
 } from "@/lib/routes";
+import {
+  buildFechaHoraISO,
+  parseNombreEstudiante,
+} from "@/lib/defensa-form";
 import "./Dashboard.css";
 
 const API = "/api";
@@ -1662,7 +1666,6 @@ function VistaAdminCrearDefensa({
 }) {
   const [form, setForm] = useState({
     nombreEstudiante: "",
-    apellidoEstudiante: "",
     titulo: "",
     fecha: "",
     hora: "",
@@ -1682,22 +1685,39 @@ function VistaAdminCrearDefensa({
     setMsg("");
     setLoading(true);
     try {
-      const iso =
-        form.fecha && form.hora
-          ? new Date(`${form.fecha}T${form.hora}:00`)
-              .toISOString()
-              .slice(0, 19)
-              .replace("T", " ")
-          : null;
+      const nombreCompleto = form.nombreEstudiante.trim();
+      const { nombre, apellido } = parseNombreEstudiante(nombreCompleto);
+      const titulo = form.titulo.trim();
+      const lugar = form.lugar.trim();
+
+      const faltantes: string[] = [];
+      if (!nombreCompleto) faltantes.push("nombre del estudiante");
+      if (!titulo) faltantes.push("título");
+      if (!lugar) faltantes.push("lugar");
+      if (!form.fecha || !form.hora) faltantes.push("fecha y hora");
+
+      if (faltantes.length > 0) {
+        setMsg(`Faltan campos obligatorios: ${faltantes.join(", ")}`);
+        return;
+      }
+
+      const iso = buildFechaHoraISO(form.fecha, form.hora);
+      if (!iso) {
+        setMsg("Fecha u hora inválida. Revisa los campos de fecha y hora.");
+        return;
+      }
+
       const res = await fetch(`${API}/defensas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          estudianteNombre: form.nombreEstudiante.trim(),
-          estudianteApellido: form.apellidoEstudiante.trim(),
-          titulo: form.titulo.trim(),
+          nombreEstudiante: nombreCompleto,
+          estudianteNombre: nombre,
+          estudianteApellido: apellido,
+          titulo,
           fecha: iso,
-          lugar: form.lugar.trim(),
+          hora: form.hora,
+          lugar,
           direccion: form.direccion.trim() || null,
           observaciones: form.observaciones.trim() || null,
         }),
@@ -1801,7 +1821,7 @@ function VistaAdminCrearDefensa({
             />
           </div>
           <div className="form__group mb-14">
-            <label className="form__label">Dirección *</label>
+            <label className="form__label">Dirección</label>
             <input
               className="form__input"
               placeholder="Ej. Av. Heroinas #1234, Cochabamba"
