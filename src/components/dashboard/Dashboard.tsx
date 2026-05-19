@@ -61,11 +61,16 @@ interface Pago {
   monto: number;
   estado: string;
   fechaPago: string | null;
+  titulo?: string;
   nombreEstudiante: string;
   apellidoEstudiante: string;
   nombreDelegado?: string;
   apellidoDelegado?: string;
   fecha: string;
+}
+
+function esPagoCompletado(estado?: string) {
+  return estado === "completado" || estado === "pagado";
 }
 
 // ICONOS
@@ -842,11 +847,11 @@ function VistaCompletadas({
                       <td>{fFechaCorta(d.fecha)}</td>
                       <td>
                         <span
-                          className={`badge ${d.estadoPago === "pagado" ? "badge--pagado" : "badge--pend-pago"}`}
+                          className={`badge ${esPagoCompletado(d.estadoPago) ? "badge--pagado" : "badge--pend-pago"}`}
                         >
-                          {d.estadoPago === "pagado"
-                            ? "Pago realizado"
-                            : "Pendiente"}
+                          {esPagoCompletado(d.estadoPago)
+                            ? "Pago completado"
+                            : "Pendiente de pago"}
                         </span>
                       </td>
                     </tr>
@@ -1069,6 +1074,21 @@ function VistaAdminDashboard({
   defensas: Defensa[];
   onNav: (k: string) => void;
 }) {
+  const [pagosPendientes, setPagosPendientes] = useState(0);
+
+  useEffect(() => {
+    fetch(`${API}/admin/pagos`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && Array.isArray(d.pagos)) {
+          setPagosPendientes(
+            d.pagos.filter((p: Pago) => p.estado === "pendiente").length,
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const hoy = new Date();
   const defensasHoy = defensas.filter((x) => {
     const fx = new Date(x.fecha);
@@ -1105,7 +1125,12 @@ function VistaAdminDashboard({
       tone: "green",
       ico: icons.checkCirc,
     },
-    { label: "Pagos pendientes", value: 0, tone: "yellow", ico: icons.dollar },
+    {
+      label: "Pagos pendientes",
+      value: pagosPendientes,
+      tone: "yellow",
+      ico: icons.dollar,
+    },
   ];
 
   return (
@@ -2244,14 +2269,17 @@ function VistaAdminPagos() {
   const [pagos, setPagos] = useState<Pago[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [marcandoId, setMarcandoId] = useState<number | null>(null);
 
   const cargar = () => {
     setLoading(true);
+    setError("");
     fetch(`${API}/admin/pagos`)
       .then((r) => r.json())
       .then((d) => {
         if (d.ok) setPagos(d.pagos || []);
-        else setError(d.error || "Error");
+        else setError(d.mensaje || d.error || "Error al cargar pagos");
       })
       .catch(() => setError("Sin conexión"))
       .finally(() => setLoading(false));
@@ -2260,13 +2288,29 @@ function VistaAdminPagos() {
     cargar();
   }, []);
 
-  const marcarPagado = async (idPago: number) => {
-    await fetch(`${API}/admin/pagos/${idPago}/pagar`, { method: "PUT" });
-    cargar();
+  const marcarCompletado = async (idPago: number) => {
+    setMarcandoId(idPago);
+    setMensaje("");
+    try {
+      const res = await fetch(`${API}/admin/pagos/${idPago}/pagar`, {
+        method: "PUT",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.mensaje || "No se pudo actualizar el pago");
+        return;
+      }
+      setMensaje("Pago marcado como completado.");
+      cargar();
+    } catch {
+      setError("Sin conexión al actualizar el pago");
+    } finally {
+      setMarcandoId(null);
+    }
   };
 
   const pendientes = pagos.filter((p) => p.estado === "pendiente");
-  const completados = pagos.filter((p) => p.estado === "pagado");
+  const completados = pagos.filter((p) => esPagoCompletado(p.estado));
 
   return (
     <>
@@ -2274,10 +2318,14 @@ function VistaAdminPagos() {
         <div>
           <h2 className="admin-page-title">Pagos Pendientes</h2>
           <p className="admin-page-sub">
-            Gestiona los pagos de las defensas completadas
+            Al completar una defensa, el pago aparece aquí para marcarlo como
+            completado
           </p>
         </div>
       </div>
+
+      {mensaje && <p className="form__msg--ok mb-16">{mensaje}</p>}
+      {error && !loading && <p className="form__error mb-16">{error}</p>}
 
       <div className="admin-cards grid-3">
         {[
@@ -2294,7 +2342,7 @@ function VistaAdminPagos() {
             ico: icons.checkCirc,
           },
           {
-            label: "Total de defensas",
+            label: "Total registrados",
             value: pagos.length,
             tone: "blue",
             ico: icons.dollar,
@@ -2312,29 +2360,30 @@ function VistaAdminPagos() {
         ))}
       </div>
 
-      <div className="admin-panel">
-        <h3 className="page-title mb-16">Defensas con pagos pendientes</h3>
+      <div className="admin-panel mb-24">
+        <h3 className="page-title mb-16">Pagos pendientes</h3>
         {loading ? (
           <Spinner />
-        ) : error ? (
-          <p className="form__error">{error}</p>
         ) : (
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
                   <th>Estudiante</th>
+                  <th>Título de tesis</th>
                   <th>Delegado</th>
-                  <th>Fecha de defensa</th>
-                  <th>Estado de pago</th>
+                  <th>Fecha defensa</th>
+                  <th>Monto</th>
+                  <th>Estado</th>
                   <th>Acción</th>
                 </tr>
               </thead>
               <tbody>
                 {pendientes.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="td-empty">
-                      Sin pagos pendientes
+                    <td colSpan={7} className="td-empty">
+                      Sin pagos pendientes. Aparecerán aquí cuando un delegado
+                      complete una defensa.
                     </td>
                   </tr>
                 ) : (
@@ -2343,25 +2392,98 @@ function VistaAdminPagos() {
                       <td className="td-bold">
                         {p.nombreEstudiante} {p.apellidoEstudiante}
                       </td>
+                      <td className="td-truncate">{p.titulo || "—"}</td>
                       <td>
                         {p.nombreDelegado
                           ? `${p.nombreDelegado} ${p.apellidoDelegado}`
-                          : "-"}
+                          : "—"}
                       </td>
                       <td>{fFechaCorta(p.fecha)}</td>
                       <td>
-                        <span className="badge badge--pend-pago">
-                          Pendiente de pago
-                        </span>
+                        {typeof p.monto === "number"
+                          ? p.monto.toLocaleString("es-ES", {
+                              style: "currency",
+                              currency: "USD",
+                              minimumFractionDigits: 0,
+                            })
+                          : "—"}
+                      </td>
+                      <td>
+                        <span className="badge badge--pend-pago">Pendiente</span>
                       </td>
                       <td>
                         <button
+                          type="button"
                           className="btn-pago"
-                          onClick={() => marcarPagado(p.idPago)}
+                          disabled={marcandoId === p.idPago}
+                          onClick={() => marcarCompletado(p.idPago)}
                         >
-                          <Ico d={icons.dollar} size={15} /> Marcar como pagado
+                          <Ico d={icons.checkCirc} size={15} />
+                          {marcandoId === p.idPago
+                            ? " Guardando..."
+                            : " Marcar como completado"}
                         </button>
                       </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="admin-panel">
+        <h3 className="page-title mb-16">Pagos completados</h3>
+        {loading ? (
+          <Spinner />
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Estudiante</th>
+                  <th>Título de tesis</th>
+                  <th>Delegado</th>
+                  <th>Fecha defensa</th>
+                  <th>Monto</th>
+                  <th>Estado</th>
+                  <th>Fecha de pago</th>
+                </tr>
+              </thead>
+              <tbody>
+                {completados.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="td-empty">
+                      Aún no hay pagos completados.
+                    </td>
+                  </tr>
+                ) : (
+                  completados.map((p) => (
+                    <tr key={p.idPago}>
+                      <td className="td-bold">
+                        {p.nombreEstudiante} {p.apellidoEstudiante}
+                      </td>
+                      <td className="td-truncate">{p.titulo || "—"}</td>
+                      <td>
+                        {p.nombreDelegado
+                          ? `${p.nombreDelegado} ${p.apellidoDelegado}`
+                          : "—"}
+                      </td>
+                      <td>{fFechaCorta(p.fecha)}</td>
+                      <td>
+                        {typeof p.monto === "number"
+                          ? p.monto.toLocaleString("es-ES", {
+                              style: "currency",
+                              currency: "USD",
+                              minimumFractionDigits: 0,
+                            })
+                          : "—"}
+                      </td>
+                      <td>
+                        <span className="badge badge--pagado">Completado</span>
+                      </td>
+                      <td>{p.fechaPago ? fFechaCorta(p.fechaPago) : "—"}</td>
                     </tr>
                   ))
                 )}
@@ -2560,11 +2682,19 @@ export default function Dashboard() {
     defensa: Defensa;
     comentarios?: string;
   }) => {
-    await fetch(`${API}/asignacion/${defensa.idAsignacion}/completar`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comentarios }),
-    });
+    const res = await fetch(
+      `${API}/asignacion/${defensa.idAsignacion}/completar`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comentarios }),
+      },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      console.error(data.mensaje || "Error al completar la defensa");
+      return;
+    }
     router.push("/delegado/completadas");
     cargarDefensas();
   };

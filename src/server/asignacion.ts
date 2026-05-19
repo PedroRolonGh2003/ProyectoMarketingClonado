@@ -1,4 +1,5 @@
 import { getPool } from "@/lib/db";
+import { crearPagoPendientePorDefensa } from "@/server/pagos";
 
 export async function actualizarEstadoAsignacion(
   id: string,
@@ -24,9 +25,11 @@ export async function completarAsignacion(id: string, comentarios?: string) {
   );
   const list = rows as { idDefensa: number }[];
   if (list.length > 0) {
+    const idDefensa = list[0].idDefensa;
     await pool.query("UPDATE Defensa SET estado = 'completada' WHERE idDefensa = ?", [
-      list[0].idDefensa,
+      idDefensa,
     ]);
+    await crearPagoPendientePorDefensa(idDefensa);
     if (comentarios) {
       await pool.query("INSERT INTO Evidencia (idAsignacion, urlArchivo) VALUES (?, ?)", [
         id,

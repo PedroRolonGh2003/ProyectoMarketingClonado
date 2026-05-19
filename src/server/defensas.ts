@@ -13,11 +13,13 @@ export async function getDefensasDelegado(idDelegado: string) {
        e.nombre   AS nombreEstudiante,
        e.apellido AS apellidoEstudiante,
        ad.estado  AS estadoAsignacion,
-       ad.idAsignacion
+       ad.idAsignacion,
+       p.estado   AS estadoPago
      FROM AsignacionDelegado ad
      JOIN Defensa        d  ON ad.idDefensa   = d.idDefensa
      JOIN PerfilTesis    pt ON d.idPerfil      = pt.idPerfil
      JOIN Estudiante     e  ON pt.idEstudiante = e.idEstudiante
+     LEFT JOIN Pago      p  ON p.idDefensa     = d.idDefensa
      WHERE ad.idDelegado = ?
      ORDER BY d.fecha DESC`,
     [idDelegado],
