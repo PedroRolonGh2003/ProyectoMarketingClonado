@@ -2,21 +2,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/db";
-import { obtenerSuscripcionesUsuario } from "@/server/push";
-import { sendPushNotification } from "@/lib/webpush";
+import { enviarPushAUsuario } from "@/server/push";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 interface DefensaDelegadoRow extends RowDataPacket {
   idUsuario: number | null;
 }
 
+async function resolveIdDefensa(
+  params: { idDefensa: string } | Promise<{ idDefensa: string }>,
+  request: NextRequest,
+): Promise<string> {
+  const resolved = await Promise.resolve(params);
+  if (resolved?.idDefensa && resolved.idDefensa !== "undefined") {
+    return resolved.idDefensa;
+  }
+
+  const segments = new URL(request.url).pathname.split("/").filter(Boolean);
+  const defensasIndex = segments.indexOf("defensas");
+  if (defensasIndex >= 0 && segments[defensasIndex + 1]) {
+    return segments[defensasIndex + 1];
+  }
+
+  return "";
+}
+
 export async function POST(
   request: NextRequest,
-  { params }: { params: { idDefensa: string } },
+  context: { params: { idDefensa: string } | Promise<{ idDefensa: string }> },
 ) {
   try {
-    const idDefensa = params.idDefensa;
+    const idDefensa = await resolveIdDefensa(context.params, request);
 
     if (!idDefensa) {
       return NextResponse.json(
@@ -25,14 +43,23 @@ export async function POST(
       );
     }
 
+    let idDelegadoBody = 0;
+    try {
+      const body = await request.json();
+      idDelegadoBody = Number(body?.idDelegado ?? 0);
+    } catch {
+      // body opcional
+    }
+
     const pool = getPool();
 
     const [rows] = await pool.query<DefensaDelegadoRow[]>(
       `SELECT u.idUsuario
        FROM Defensa d
        LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
-       LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
-       WHERE d.idDefensa = ?`,
+       LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario AND u.activo = 1
+       WHERE d.idDefensa = ?
+       LIMIT 1`,
       [idDefensa],
     );
 
@@ -43,7 +70,7 @@ export async function POST(
       );
     }
 
-    const idDelegado = rows[0]?.idUsuario;
+    const idDelegado = Number(rows[0]?.idUsuario || idDelegadoBody);
 
     if (!idDelegado) {
       return NextResponse.json(
@@ -52,39 +79,39 @@ export async function POST(
       );
     }
 
-    const subs = await obtenerSuscripcionesUsuario(idDelegado);
-
-    if (subs.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        mensaje: "Recordatorio enviado (sin suscripciones activas)",
-      });
-    }
-
-    const payload = {
+    const resultado = await enviarPushAUsuario(idDelegado, {
       title: "Recordatorio de defensa",
       body: "Tienes una defensa asignada próximamente. Revisa los detalles en la app.",
       url: "/delegado/pendientes",
-    };
+    });
 
-    const results = await Promise.allSettled(
-      subs.map((sub) => sendPushNotification(sub, payload)),
-    );
+    if (resultado.sinSuscripciones) {
+      return NextResponse.json(
+        {
+          ok: false,
+          mensaje:
+            "El delegado no tiene notificaciones activadas. Debe entrar como delegado y pulsar «Activar notificaciones».",
+        },
+        { status: 400 },
+      );
+    }
 
-    const enviados = results.filter((r) => r.status === "fulfilled").length;
-
-    if (enviados > 0) {
+    if (resultado.enviados > 0) {
       return NextResponse.json({
         ok: true,
         mensaje: "Recordatorio enviado",
+        enviados: resultado.enviados,
+        fallidos: resultado.fallidos,
       });
     }
 
+    const detalle = resultado.errores[0] ?? "";
+    const mensaje = detalle.includes("VAPID")
+      ? "Error de configuración VAPID en el servidor. Revisa las variables en Vercel."
+      : "No se pudo enviar el recordatorio. El delegado debe volver a activar notificaciones en su cuenta.";
+
     return NextResponse.json(
-      {
-        ok: false,
-        mensaje: "No se pudo enviar el recordatorio",
-      },
+      { ok: false, mensaje, detalle },
       { status: 500 },
     );
   } catch (error) {

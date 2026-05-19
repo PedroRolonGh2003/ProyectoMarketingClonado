@@ -1,5 +1,6 @@
 // src\server\push.ts
 import { getPool } from "@/lib/db";
+import { sendPushNotification } from "@/lib/webpush";
 import type { PushSubscriptionBody } from "@/types/push";
 
 type PushRow = {
@@ -66,4 +67,87 @@ export async function obtenerSuscripcionesUsuario(
       auth: row.auth,
     },
   }));
+}
+
+export async function eliminarSuscripcionPorEndpoint(
+  endpoint: string,
+): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM SuscripcionPush WHERE endpoint = ?", [
+    endpoint,
+  ]);
+}
+
+function pushErrorStatusCode(reason: unknown): number {
+  if (reason && typeof reason === "object" && "statusCode" in reason) {
+    return Number((reason as { statusCode: number }).statusCode) || 0;
+  }
+  return 0;
+}
+
+function pushErrorMessage(reason: unknown): string {
+  if (reason instanceof Error) return reason.message;
+  return String(reason);
+}
+
+export type PushPayload = {
+  title: string;
+  body: string;
+  url?: string;
+  icon?: string;
+  badge?: string;
+};
+
+export async function enviarPushAUsuario(
+  usuarioId: number,
+  payload: PushPayload,
+): Promise<{
+  enviados: number;
+  fallidos: number;
+  sinSuscripciones: boolean;
+  errores: string[];
+}> {
+  const subs = await obtenerSuscripcionesUsuario(usuarioId);
+
+  if (subs.length === 0) {
+    return { enviados: 0, fallidos: 0, sinSuscripciones: true, errores: [] };
+  }
+
+  const fullPayload: PushPayload = {
+    title: payload.title,
+    body: payload.body,
+    url: payload.url ?? "/delegado/pendientes",
+    icon: payload.icon ?? "/LogoColMarketing.jpg",
+    badge: payload.badge ?? "/LogoColMarketing.jpg",
+  };
+
+  const results = await Promise.allSettled(
+    subs.map((sub) => sendPushNotification(sub, fullPayload)),
+  );
+
+  let enviados = 0;
+  const errores: string[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result.status === "fulfilled") {
+      enviados++;
+      continue;
+    }
+
+    const reason = result.reason;
+    const statusCode = pushErrorStatusCode(reason);
+    errores.push(pushErrorMessage(reason));
+
+    if (statusCode === 404 || statusCode === 410) {
+      await eliminarSuscripcionPorEndpoint(subs[i].endpoint);
+    }
+  }
+
+  return {
+    enviados,
+    fallidos: subs.length - enviados,
+    sinSuscripciones: false,
+    errores,
+  };
 }

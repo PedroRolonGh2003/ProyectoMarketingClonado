@@ -1321,13 +1321,17 @@ function VistaAdminDefensas({
     try {
       const res = await fetch(
         `${API}/admin/defensas/${idDefensa}/recordatorio`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idDelegado }),
+        },
       );
       const data = await res.json();
       if (data.ok) {
-        alert("Recordatorio enviado");
+        alert(data.mensaje || "Recordatorio enviado");
       } else {
-        alert(data.mensaje || "Error");
+        alert(data.mensaje || data.detalle || "No se pudo enviar el recordatorio");
       }
     } catch {
       alert("Sin conexión");
