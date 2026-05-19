@@ -69,8 +69,14 @@ interface Pago {
   fecha: string;
 }
 
-function esPagoCompletado(estado?: string) {
-  return estado === "completado" || estado === "pagado";
+function esPagoCompletado(estado?: string | null) {
+  if (!estado) return false;
+  const e = String(estado).toLowerCase();
+  return e === "completado" || e === "pagado";
+}
+
+function esPagoPendiente(estado?: string | null) {
+  return !esPagoCompletado(estado);
 }
 
 // ICONOS
@@ -850,8 +856,8 @@ function VistaCompletadas({
                           className={`badge ${esPagoCompletado(d.estadoPago) ? "badge--pagado" : "badge--pend-pago"}`}
                         >
                           {esPagoCompletado(d.estadoPago)
-                            ? "Pago completado"
-                            : "Pendiente de pago"}
+                            ? "Completado"
+                            : "Pendiente"}
                         </span>
                       </td>
                     </tr>
@@ -1082,7 +1088,7 @@ function VistaAdminDashboard({
       .then((d) => {
         if (d.ok && Array.isArray(d.pagos)) {
           setPagosPendientes(
-            d.pagos.filter((p: Pago) => p.estado === "pendiente").length,
+            d.pagos.filter((p: Pago) => esPagoPendiente(p.estado)).length,
           );
         }
       })
@@ -2288,29 +2294,35 @@ function VistaAdminPagos() {
     cargar();
   }, []);
 
-  const marcarCompletado = async (idPago: number) => {
-    setMarcandoId(idPago);
+  const confirmarPago = async (p: Pago) => {
+    const key = p.idPago > 0 ? p.idPago : p.idDefensa;
+    setMarcandoId(key);
     setMensaje("");
+    setError("");
     try {
-      const res = await fetch(`${API}/admin/pagos/${idPago}/pagar`, {
-        method: "PUT",
-      });
+      const res = await fetch(
+        `${API}/admin/pagos/${p.idPago > 0 ? p.idPago : 0}/pagar`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idDefensa: p.idDefensa }),
+        },
+      );
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        setError(data.mensaje || "No se pudo actualizar el pago");
+        setError(data.mensaje || "No se pudo confirmar el pago");
         return;
       }
-      setMensaje("Pago marcado como completado.");
+      setMensaje("Pago confirmado. El delegado verá el estado como Completado.");
       cargar();
     } catch {
-      setError("Sin conexión al actualizar el pago");
+      setError("Sin conexión al confirmar el pago");
     } finally {
       setMarcandoId(null);
     }
   };
 
-  const pendientes = pagos.filter((p) => p.estado === "pendiente");
-  const completados = pagos.filter((p) => esPagoCompletado(p.estado));
+  const pendientes = pagos.filter((p) => esPagoPendiente(p.estado));
 
   return (
     <>
@@ -2318,8 +2330,7 @@ function VistaAdminPagos() {
         <div>
           <h2 className="admin-page-title">Pagos Pendientes</h2>
           <p className="admin-page-sub">
-            Al completar una defensa, el pago aparece aquí para marcarlo como
-            completado
+            Defensas completadas por delegados. Confirma el pago con el botón.
           </p>
         </div>
       </div>
@@ -2327,41 +2338,8 @@ function VistaAdminPagos() {
       {mensaje && <p className="form__msg--ok mb-16">{mensaje}</p>}
       {error && !loading && <p className="form__error mb-16">{error}</p>}
 
-      <div className="admin-cards grid-3">
-        {[
-          {
-            label: "Pagos pendientes",
-            value: pendientes.length,
-            tone: "yellow",
-            ico: icons.bell,
-          },
-          {
-            label: "Pagos completados",
-            value: completados.length,
-            tone: "green",
-            ico: icons.checkCirc,
-          },
-          {
-            label: "Total registrados",
-            value: pagos.length,
-            tone: "blue",
-            ico: icons.dollar,
-          },
-        ].map((c) => (
-          <div key={c.label} className="admin-card">
-            <div className="admin-card__top">
-              <span className="admin-card__label">{c.label}</span>
-              <div className={`admin-card__ico admin-card__ico--${c.tone}`}>
-                <Ico d={c.ico} size={16} />
-              </div>
-            </div>
-            <div className="admin-card__value">{c.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="admin-panel mb-24">
-        <h3 className="page-title mb-16">Pagos pendientes</h3>
+      <div className="admin-panel">
+        <h3 className="page-title mb-16">Pagos por confirmar ({pendientes.length})</h3>
         {loading ? (
           <Spinner />
         ) : (
@@ -2373,59 +2351,56 @@ function VistaAdminPagos() {
                   <th>Título de tesis</th>
                   <th>Delegado</th>
                   <th>Fecha defensa</th>
-                  <th>Monto</th>
-                  <th>Estado</th>
+                  <th>Estado pago</th>
                   <th>Acción</th>
                 </tr>
               </thead>
               <tbody>
                 {pendientes.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="td-empty">
-                      Sin pagos pendientes. Aparecerán aquí cuando un delegado
-                      complete una defensa.
+                    <td colSpan={6} className="td-empty">
+                      No hay pagos pendientes. Cuando un delegado complete una
+                      defensa, aparecerá aquí.
                     </td>
                   </tr>
                 ) : (
-                  pendientes.map((p) => (
-                    <tr key={p.idPago}>
-                      <td className="td-bold">
-                        {p.nombreEstudiante} {p.apellidoEstudiante}
-                      </td>
-                      <td className="td-truncate">{p.titulo || "—"}</td>
-                      <td>
-                        {p.nombreDelegado
-                          ? `${p.nombreDelegado} ${p.apellidoDelegado}`
-                          : "—"}
-                      </td>
-                      <td>{fFechaCorta(p.fecha)}</td>
-                      <td>
-                        {typeof p.monto === "number"
-                          ? p.monto.toLocaleString("es-ES", {
-                              style: "currency",
-                              currency: "USD",
-                              minimumFractionDigits: 0,
-                            })
-                          : "—"}
-                      </td>
-                      <td>
-                        <span className="badge badge--pend-pago">Pendiente</span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn-pago"
-                          disabled={marcandoId === p.idPago}
-                          onClick={() => marcarCompletado(p.idPago)}
-                        >
-                          <Ico d={icons.checkCirc} size={15} />
-                          {marcandoId === p.idPago
-                            ? " Guardando..."
-                            : " Marcar como completado"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  pendientes.map((p) => {
+                    const rowKey =
+                      p.idPago > 0 ? `pago-${p.idPago}` : `def-${p.idDefensa}`;
+                    const busyId = p.idPago > 0 ? p.idPago : p.idDefensa;
+                    return (
+                      <tr key={rowKey}>
+                        <td className="td-bold">
+                          {p.nombreEstudiante} {p.apellidoEstudiante}
+                        </td>
+                        <td className="td-truncate">{p.titulo || "—"}</td>
+                        <td>
+                          {p.nombreDelegado
+                            ? `${p.nombreDelegado} ${p.apellidoDelegado}`
+                            : "—"}
+                        </td>
+                        <td>{fFechaCorta(p.fecha)}</td>
+                        <td>
+                          <span className="badge badge--pend-pago">
+                            Pendiente
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-pago"
+                            disabled={marcandoId === busyId}
+                            onClick={() => confirmarPago(p)}
+                          >
+                            <Ico d={icons.checkCirc} size={15} />
+                            {marcandoId === busyId
+                              ? " Confirmando..."
+                              : " Confirmar pago"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -2433,65 +2408,6 @@ function VistaAdminPagos() {
         )}
       </div>
 
-      <div className="admin-panel">
-        <h3 className="page-title mb-16">Pagos completados</h3>
-        {loading ? (
-          <Spinner />
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Estudiante</th>
-                  <th>Título de tesis</th>
-                  <th>Delegado</th>
-                  <th>Fecha defensa</th>
-                  <th>Monto</th>
-                  <th>Estado</th>
-                  <th>Fecha de pago</th>
-                </tr>
-              </thead>
-              <tbody>
-                {completados.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="td-empty">
-                      Aún no hay pagos completados.
-                    </td>
-                  </tr>
-                ) : (
-                  completados.map((p) => (
-                    <tr key={p.idPago}>
-                      <td className="td-bold">
-                        {p.nombreEstudiante} {p.apellidoEstudiante}
-                      </td>
-                      <td className="td-truncate">{p.titulo || "—"}</td>
-                      <td>
-                        {p.nombreDelegado
-                          ? `${p.nombreDelegado} ${p.apellidoDelegado}`
-                          : "—"}
-                      </td>
-                      <td>{fFechaCorta(p.fecha)}</td>
-                      <td>
-                        {typeof p.monto === "number"
-                          ? p.monto.toLocaleString("es-ES", {
-                              style: "currency",
-                              currency: "USD",
-                              minimumFractionDigits: 0,
-                            })
-                          : "—"}
-                      </td>
-                      <td>
-                        <span className="badge badge--pagado">Completado</span>
-                      </td>
-                      <td>{p.fechaPago ? fFechaCorta(p.fechaPago) : "—"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </>
   );
 }

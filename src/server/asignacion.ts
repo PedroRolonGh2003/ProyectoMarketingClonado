@@ -29,7 +29,14 @@ export async function completarAsignacion(id: string, comentarios?: string) {
     await pool.query("UPDATE Defensa SET estado = 'completada' WHERE idDefensa = ?", [
       idDefensa,
     ]);
-    await crearPagoPendientePorDefensa(idDefensa);
+    try {
+      await crearPagoPendientePorDefensa(idDefensa);
+    } catch (err) {
+      console.error(
+        "[pagos] al completar defensa:",
+        err instanceof Error ? err.message : err,
+      );
+    }
     if (comentarios) {
       await pool.query("INSERT INTO Evidencia (idAsignacion, urlArchivo) VALUES (?, ?)", [
         id,
