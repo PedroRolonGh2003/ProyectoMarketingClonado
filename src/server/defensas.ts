@@ -127,6 +127,8 @@ export async function actualizarDefensa(
   },
 ) {
   const pool = getPool();
+  const estadoNorm = String(body.estado ?? "").toLowerCase().trim();
+
   await pool.query(
     `UPDATE Defensa d
      JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
@@ -144,6 +146,22 @@ export async function actualizarDefensa(
       id,
     ],
   );
+
+  if (estadoNorm === "completada" || estadoNorm === "completado") {
+    await pool.query(
+      `UPDATE AsignacionDelegado SET estado = 'completada' WHERE idDefensa = ?`,
+      [id],
+    );
+    try {
+      const { crearPagoPendientePorDefensa } = await import("@/server/pagos");
+      await crearPagoPendientePorDefensa(Number(id));
+    } catch (err) {
+      console.error(
+        "[pagos] al marcar defensa completada:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 }
 
 export async function eliminarDefensa(id: string) {

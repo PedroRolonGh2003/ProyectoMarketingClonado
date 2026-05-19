@@ -3,26 +3,55 @@ import { getPool } from "@/lib/db";
 
 const MONTO_PAGO_DEFENSA = Number(process.env.PAGO_MONTO_DEFENSA || 1);
 
-export function esPagoCompletado(estado?: string | null): boolean {
+const ESTADOS_DEFENSA_COMPLETADA = ["completada", "completado"] as const;
+const ESTADOS_PAGO_CONFIRMADO = ["completado", "pagado"] as const;
+
+export function esPagoCompletado(
+  estado?: string | null,
+  fechaPago?: string | Date | null,
+): boolean {
+  if (fechaPago) return true;
   if (!estado) return false;
-  const e = String(estado).toLowerCase();
-  return e === "completado" || e === "pagado";
+  const e = String(estado).toLowerCase().trim();
+  return ESTADOS_PAGO_CONFIRMADO.includes(e as (typeof ESTADOS_PAGO_CONFIRMADO)[number]);
 }
 
-export function esPagoPendiente(estado?: string | null): boolean {
-  return !esPagoCompletado(estado);
+export function esPagoPendiente(
+  estado?: string | null,
+  fechaPago?: string | Date | null,
+): boolean {
+  return !esPagoCompletado(estado, fechaPago);
 }
 
-/** Defensas con asignación completada → pagos pendientes o completados. */
-async function listarPagosDesdeDefensasCompletadas() {
+function defensaCompletadaSql(aliasDefensa: string, aliasAsignacion: string) {
+  const estados = ESTADOS_DEFENSA_COMPLETADA.map((e) => `'${e}'`).join(", ");
+  return `(
+    LOWER(TRIM(IFNULL(${aliasAsignacion}.estado, ''))) IN (${estados})
+    OR LOWER(TRIM(IFNULL(${aliasDefensa}.estado, ''))) IN (${estados})
+  )`;
+}
+
+/** Pendiente = el admin aún no confirmó (sin fecha de pago). */
+function pagoPendienteSql(aliasPago: string) {
+  return `(${aliasPago}.idPago IS NULL OR ${aliasPago}.fechaPago IS NULL)`;
+}
+
+/** Solo defensas completadas con pago aún no confirmado por el admin. */
+export async function listarPagosPendientesAdmin() {
   const pool = getPool();
+
+  await sincronizarPagosDefensasCompletadas();
 
   const [rows] = await pool.query(
     `SELECT
        IFNULL(p.idPago, 0) AS idPago,
        d.idDefensa,
        IFNULL(p.monto, ?) AS monto,
-       IFNULL(p.estado, 'pendiente') AS estado,
+       CASE
+         WHEN p.fechaPago IS NOT NULL THEN 'completado'
+         WHEN LOWER(TRIM(IFNULL(p.estado, ''))) IN ('completado', 'pagado') THEN 'completado'
+         ELSE 'pendiente'
+       END AS estado,
        p.fechaPago,
        d.fecha,
        pt.titulo,
@@ -30,42 +59,28 @@ async function listarPagosDesdeDefensasCompletadas() {
        e.apellido AS apellidoEstudiante,
        u.nombre AS nombreDelegado,
        u.apellido AS apellidoDelegado
-     FROM AsignacionDelegado ad
-     INNER JOIN Defensa d ON ad.idDefensa = d.idDefensa
+     FROM Defensa d
      INNER JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
      INNER JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
+     LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
      LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
      LEFT JOIN Pago p ON p.idDefensa = d.idDefensa
-     WHERE ad.estado IN ('completada', 'completado')
-        OR d.estado IN ('completada', 'completado')
-     ORDER BY
-       CASE WHEN IFNULL(p.estado, 'pendiente') = 'pendiente' THEN 0 ELSE 1 END,
-       d.fecha DESC`,
+     WHERE ${defensaCompletadaSql("d", "ad")}
+       AND ${pagoPendienteSql("p")}
+     ORDER BY d.fecha DESC`,
     [MONTO_PAGO_DEFENSA],
   );
 
   return rows;
 }
 
+/** @deprecated Usar listarPagosPendientesAdmin */
 export async function listarPagosAdmin() {
-  try {
-    await sincronizarPagosDefensasCompletadas();
-    return await listarPagosDesdeDefensasCompletadas();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (
-      msg.includes("doesn't exist") ||
-      msg.includes("Unknown table") ||
-      msg.toLowerCase().includes("pago")
-    ) {
-      return listarPagosSinTablaPago();
-    }
-    throw err;
-  }
+  return listarPagosPendientesAdmin();
 }
 
-/** Listado cuando la tabla Pago aún no existe (solo defensas completadas). */
-async function listarPagosSinTablaPago() {
+/** Listado cuando la tabla Pago no existe. */
+async function listarPagosPendientesSinTablaPago() {
   const pool = getPool();
   const [rows] = await pool.query(
     `SELECT
@@ -80,28 +95,45 @@ async function listarPagosSinTablaPago() {
        e.apellido AS apellidoEstudiante,
        u.nombre AS nombreDelegado,
        u.apellido AS apellidoDelegado
-     FROM AsignacionDelegado ad
-     INNER JOIN Defensa d ON ad.idDefensa = d.idDefensa
+     FROM Defensa d
      INNER JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
      INNER JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
+     LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
      LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
-     WHERE ad.estado IN ('completada', 'completado')
-        OR d.estado IN ('completada', 'completado')
+     WHERE ${defensaCompletadaSql("d", "ad")}
      ORDER BY d.fecha DESC`,
     [MONTO_PAGO_DEFENSA],
   );
   return rows;
 }
 
-/** Crea filas Pago faltantes para defensas ya completadas. */
+export async function contarPagosPendientesAdmin(): Promise<number> {
+  try {
+    const rows = await listarPagosPendientesAdmin();
+    return (rows as unknown[]).length;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (
+      msg.includes("doesn't exist") ||
+      msg.includes("Unknown table") ||
+      msg.toLowerCase().includes("pago")
+    ) {
+      const rows = await listarPagosPendientesSinTablaPago();
+      return (rows as unknown[]).length;
+    }
+    return 0;
+  }
+}
+
+/** Crea o corrige pagos para defensas completadas. */
 export async function sincronizarPagosDefensasCompletadas(): Promise<void> {
   const pool = getPool();
+
   const [rows] = await pool.query(
     `SELECT DISTINCT d.idDefensa
-     FROM AsignacionDelegado ad
-     INNER JOIN Defensa d ON ad.idDefensa = d.idDefensa
-     WHERE ad.estado IN ('completada', 'completado')
-        OR d.estado IN ('completada', 'completado')`,
+     FROM Defensa d
+     LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
+     WHERE ${defensaCompletadaSql("d", "ad")}`,
   );
 
   for (const row of rows as { idDefensa: number }[]) {
@@ -114,27 +146,47 @@ export async function sincronizarPagosDefensasCompletadas(): Promise<void> {
       );
     }
   }
+
+  try {
+    await pool.query(
+      `UPDATE Pago p
+       INNER JOIN Defensa d ON p.idDefensa = d.idDefensa
+       LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
+       SET p.estado = 'pendiente', p.fechaPago = NULL
+       WHERE ${defensaCompletadaSql("d", "ad")}
+         AND p.fechaPago IS NULL
+         AND LOWER(TRIM(IFNULL(p.estado, ''))) IN ('completada', 'completado')`,
+    );
+  } catch {
+    /* tabla o columnas distintas */
+  }
 }
 
-/** Crea un pago pendiente (idempotente por idDefensa). */
+/** Crea un pago pendiente (idempotente). Si existe pero no está confirmado, lo deja pendiente. */
 export async function crearPagoPendientePorDefensa(
   idDefensa: number,
 ): Promise<number | null> {
   const pool = getPool();
 
   const [existing] = await pool.query(
-    "SELECT idPago, estado FROM Pago WHERE idDefensa = ? LIMIT 1",
+    "SELECT idPago, estado, fechaPago FROM Pago WHERE idDefensa = ? LIMIT 1",
     [idDefensa],
   );
-  const prev = (existing as { idPago: number; estado: string }[])[0];
+  const prev = (existing as { idPago: number; estado: string; fechaPago: Date | null }[])[0];
+
   if (prev) {
+    if (!prev.fechaPago) {
+      await pool.query(
+        "UPDATE Pago SET estado = 'pendiente', fechaPago = NULL WHERE idPago = ?",
+        [prev.idPago],
+      );
+    }
     return prev.idPago;
   }
 
   const attempts = [
     `INSERT INTO Pago (idDefensa, monto, estado, fechaPago) VALUES (?, ?, 'pendiente', NULL)`,
     `INSERT INTO Pago (idDefensa, monto, estado) VALUES (?, ?, 'pendiente')`,
-    `INSERT INTO Pago (idDefensa, monto, estado, fechaPago) VALUES (?, ?, 'Pendiente', NULL)`,
   ];
 
   let lastError: unknown;
@@ -148,8 +200,7 @@ export async function crearPagoPendientePorDefensa(
         "SELECT idPago FROM Pago WHERE idDefensa = ? LIMIT 1",
         [idDefensa],
       );
-      const id = (found as { idPago: number }[])[0]?.idPago;
-      return id ?? null;
+      return (found as { idPago: number }[])[0]?.idPago ?? null;
     } catch (err) {
       lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -165,7 +216,7 @@ export async function crearPagoPendientePorDefensa(
 
   throw lastError instanceof Error
     ? lastError
-    : new Error("No se pudo crear el pago. Verifica que la tabla Pago exista.");
+    : new Error("No se pudo crear el pago. Ejecuta sql/pago-table.sql en MySQL.");
 }
 
 export async function confirmarPago(
@@ -194,8 +245,7 @@ export async function confirmarPago(
   for (const sql of updates) {
     try {
       const [result] = await pool.query(sql, [id]);
-      const affected = (result as ResultSetHeader).affectedRows;
-      if (affected > 0) return;
+      if ((result as ResultSetHeader).affectedRows > 0) return;
     } catch {
       /* siguiente variante */
     }
@@ -204,12 +254,10 @@ export async function confirmarPago(
   throw new Error("Pago no encontrado o ya fue confirmado");
 }
 
-/** @deprecated */
-export async function marcarPagoCompletado(id: string) {
-  return confirmarPago(id);
+export async function marcarPagoCompletado(id: string, idDefensa?: number) {
+  return confirmarPago(id, idDefensa);
 }
 
-/** @deprecated */
-export async function marcarPagoPagado(id: string) {
-  return confirmarPago(id);
+export async function marcarPagoPagado(id: string, idDefensa?: number) {
+  return confirmarPago(id, idDefensa);
 }

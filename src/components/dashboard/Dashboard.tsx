@@ -69,14 +69,18 @@ interface Pago {
   fecha: string;
 }
 
-function esPagoCompletado(estado?: string | null) {
+function esPagoCompletado(
+  estado?: string | null,
+  fechaPago?: string | null,
+) {
+  if (fechaPago) return true;
   if (!estado) return false;
-  const e = String(estado).toLowerCase();
+  const e = String(estado).toLowerCase().trim();
   return e === "completado" || e === "pagado";
 }
 
-function esPagoPendiente(estado?: string | null) {
-  return !esPagoCompletado(estado);
+function esPagoPendiente(estado?: string | null, fechaPago?: string | null) {
+  return !esPagoCompletado(estado, fechaPago);
 }
 
 // ICONOS
@@ -855,7 +859,7 @@ function VistaCompletadas({
                         <span
                           className={`badge ${esPagoCompletado(d.estadoPago) ? "badge--pagado" : "badge--pend-pago"}`}
                         >
-                          {esPagoCompletado(d.estadoPago)
+                          {esPagoCompletado(d.estadoPago, null)
                             ? "Completado"
                             : "Pendiente"}
                         </span>
@@ -1088,7 +1092,9 @@ function VistaAdminDashboard({
       .then((d) => {
         if (d.ok && Array.isArray(d.pagos)) {
           setPagosPendientes(
-            d.pagos.filter((p: Pago) => esPagoPendiente(p.estado)).length,
+            typeof d.pendientes === "number"
+              ? d.pendientes
+              : (d.pagos || []).length,
           );
         }
       })
@@ -2322,7 +2328,9 @@ function VistaAdminPagos() {
     }
   };
 
-  const pendientes = pagos.filter((p) => esPagoPendiente(p.estado));
+  const pendientes = pagos.filter((p) =>
+    esPagoPendiente(p.estado, p.fechaPago),
+  );
 
   return (
     <>
