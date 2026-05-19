@@ -19,6 +19,12 @@ export async function GET(_request: Request, context: Ctx) {
 export async function DELETE(_request: Request, context: Ctx) {
   try {
     const { id } = context.params;
+    if (!id || id === "undefined") {
+      return NextResponse.json(
+        { ok: false, mensaje: "ID de defensa inválido" },
+        { status: 400 },
+      );
+    }
     await eliminarDefensa(id);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

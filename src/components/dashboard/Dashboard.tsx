@@ -260,6 +260,12 @@ const fHora = (f: string) =>
       })
     : "-";
 
+function estadoAdminDefensa(d: Defensa): string {
+  if (d.estadoAsignacion) return d.estadoAsignacion;
+  if (!d.nombreDelegado && !d.idDelegado) return "sin asignar";
+  return d.estado || "pendiente";
+}
+
 function BadgeEstado({ estado }: { estado: string }) {
   const map: Record<string, string> = {
     pendiente: "badge--pendiente",
@@ -1257,8 +1263,19 @@ function VistaAdminDefensas({
 
   const handleEliminar = async (idDefensa: number) => {
     if (!window.confirm("¿Eliminar esta defensa?")) return;
-    await fetch(`${API}/defensas/${idDefensa}`, { method: "DELETE" });
-    onRecargar();
+    try {
+      const res = await fetch(`${API}/defensas/${idDefensa}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.ok) {
+        onRecargar();
+      } else {
+        alert(data.mensaje || "No se pudo eliminar la defensa");
+      }
+    } catch {
+      alert("Sin conexión al eliminar la defensa");
+    }
   };
 
   const handleGuardarEdicion = async () => {
@@ -1422,7 +1439,7 @@ function VistaAdminDefensas({
                         )}
                       </td>
                       <td>
-                        <BadgeEstado estado={d.estadoAsignacion || d.estado} />
+                        <BadgeEstado estado={estadoAdminDefensa(d)} />
                       </td>
                       <td>
                         <div className="acciones-row">
@@ -1634,7 +1651,7 @@ function VistaAdminCrearDefensa({
   onCreada,
 }: {
   onBack: () => void;
-  onCreada: () => void;
+  onCreada: () => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
     nombreEstudiante: "",
@@ -1674,13 +1691,15 @@ function VistaAdminCrearDefensa({
           titulo: form.titulo.trim(),
           fecha: iso,
           lugar: form.lugar.trim(),
+          direccion: form.direccion.trim() || null,
+          observaciones: form.observaciones.trim() || null,
         }),
       });
       const data = await res.json();
-      if (!data.ok) setMsg(data.error || "No se pudo crear");
+      if (!data.ok) setMsg(data.mensaje || data.error || "No se pudo crear");
       else {
         setMsg("Defensa creada ✓");
-        setTimeout(() => onCreada(), 1000);
+        await onCreada();
       }
     } catch {
       setMsg("Sin conexión");
@@ -2395,14 +2414,14 @@ export default function Dashboard() {
   const [detalle, setDetalle] = useState<Defensa | null>(null);
   const [evidencia, setEvidencia] = useState<Defensa | null>(null);
 
-  const cargarDefensas = () => {
-    if (!usuario) return;
+  const cargarDefensas = (): Promise<void> => {
+    if (!usuario) return Promise.resolve();
     setLoading(true);
     const url =
       usuario.rol === 0
         ? `${API}/admin/defensas`
         : `${API}/defensas/${usuario.id}`;
-    fetch(url)
+    return fetch(url, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (d.ok) setDefensas(d.defensas);
@@ -2523,8 +2542,8 @@ export default function Dashboard() {
           return (
             <VistaAdminCrearDefensa
               onBack={() => router.push("/admin/defensas")}
-              onCreada={() => {
-                cargarDefensas();
+              onCreada={async () => {
+                await cargarDefensas();
                 router.push("/admin/defensas");
               }}
             />

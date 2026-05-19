@@ -70,8 +70,18 @@ export async function crearDefensa(body: {
   titulo: string;
   fecha: string | null;
   lugar: string;
+  direccion?: string | null;
+  observaciones?: string | null;
 }) {
-  const { estudianteNombre, estudianteApellido, titulo, fecha, lugar } = body;
+  const {
+    estudianteNombre,
+    estudianteApellido,
+    titulo,
+    fecha,
+    lugar,
+    direccion = null,
+    observaciones = null,
+  } = body;
   const pool = getPool();
   const [estResult] = await pool.query(
     "INSERT INTO Estudiante (nombre, apellido) VALUES (?, ?)",
@@ -85,10 +95,22 @@ export async function crearDefensa(body: {
   );
   const idPerfil = (perfResult as ResultSetHeader).insertId;
 
-  await pool.query(
-    "INSERT INTO Defensa (idPerfil, fecha, lugar, estado) VALUES (?, ?, ?, 'pendiente')",
-    [idPerfil, fecha, lugar],
-  );
+  try {
+    await pool.query(
+      `INSERT INTO Defensa (idPerfil, fecha, lugar, estado, direccion, observaciones)
+       VALUES (?, ?, ?, 'pendiente', ?, ?)`,
+      [idPerfil, fecha, lugar, direccion, observaciones],
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("Unknown column")) {
+      throw err;
+    }
+    await pool.query(
+      "INSERT INTO Defensa (idPerfil, fecha, lugar, estado) VALUES (?, ?, ?, 'pendiente')",
+      [idPerfil, fecha, lugar],
+    );
+  }
 }
 
 export async function actualizarDefensa(
@@ -124,7 +146,53 @@ export async function actualizarDefensa(
 
 export async function eliminarDefensa(id: string) {
   const pool = getPool();
-  await pool.query("DELETE FROM Defensa WHERE idDefensa = ?", [id]);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [asignaciones] = await conn.query(
+      "SELECT idAsignacion FROM AsignacionDelegado WHERE idDefensa = ?",
+      [id],
+    );
+    const idsAsignacion = (asignaciones as { idAsignacion: number }[]).map(
+      (row) => row.idAsignacion,
+    );
+
+    if (idsAsignacion.length > 0) {
+      const placeholders = idsAsignacion.map(() => "?").join(", ");
+      await conn.query(
+        `DELETE FROM Evidencia WHERE idAsignacion IN (${placeholders})`,
+        idsAsignacion,
+      );
+    }
+
+    await conn.query("DELETE FROM AsignacionDelegado WHERE idDefensa = ?", [id]);
+
+    try {
+      await conn.query("DELETE FROM Pago WHERE idDefensa = ?", [id]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("doesn't exist")) {
+        throw err;
+      }
+    }
+
+    const [result] = await conn.query(
+      "DELETE FROM Defensa WHERE idDefensa = ?",
+      [id],
+    );
+    const affected = (result as ResultSetHeader).affectedRows;
+    if (affected === 0) {
+      throw new Error("Defensa no encontrada");
+    }
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function asignarDelegado(idDefensa: string, idDelegado: number) {
