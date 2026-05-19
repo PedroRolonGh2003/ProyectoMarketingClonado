@@ -1,7 +1,7 @@
 ﻿// src\components\dashboard\Dashboard.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -1200,12 +1200,14 @@ function VistaAdminDefensas({
   delegados,
   onIrCrear,
   onRecargar,
+  onQuitarDefensa,
 }: {
   defensas: Defensa[];
   loading: boolean;
   delegados: Delegado[];
   onIrCrear: () => void;
-  onRecargar: () => void;
+  onRecargar: () => void | Promise<void>;
+  onQuitarDefensa: (idDefensa: number) => void;
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [filtroDelegado, setFiltro] = useState("");
@@ -1254,7 +1256,7 @@ function VistaAdminDefensas({
         setModalAsignar(null);
         setDelegadoSel(null);
         setBusqDelegado("");
-        onRecargar();
+        await onRecargar();
       } else setMsgAsignar(data.error || "Error al asignar");
     } catch {
       setMsgAsignar("Sin conexión");
@@ -1269,7 +1271,8 @@ function VistaAdminDefensas({
       });
       const data = await res.json();
       if (data.ok) {
-        onRecargar();
+        onQuitarDefensa(idDefensa);
+        await onRecargar();
       } else {
         alert(data.mensaje || "No se pudo eliminar la defensa");
       }
@@ -1302,7 +1305,7 @@ function VistaAdminDefensas({
       if (data.ok) {
         setModalVer(null);
         setEditForm(null);
-        onRecargar();
+        await onRecargar();
       } else {
         setEditMsg(data.mensaje || "Error al guardar");
       }
@@ -2413,22 +2416,44 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [detalle, setDetalle] = useState<Defensa | null>(null);
   const [evidencia, setEvidencia] = useState<Defensa | null>(null);
+  const defensasFetchId = useRef(0);
+  const defensasLoadedOnce = useRef(false);
 
-  const cargarDefensas = (): Promise<void> => {
+  const quitarDefensaLocal = useCallback((idDefensa: number) => {
+    const id = Number(idDefensa);
+    setDefensas((prev) => prev.filter((d) => Number(d.idDefensa) !== id));
+  }, []);
+
+  const cargarDefensas = useCallback((): Promise<void> => {
     if (!usuario) return Promise.resolve();
-    setLoading(true);
-    const url =
+    const fetchId = ++defensasFetchId.current;
+    if (!defensasLoadedOnce.current) {
+      setLoading(true);
+    }
+    const base =
       usuario.rol === 0
         ? `${API}/admin/defensas`
         : `${API}/defensas/${usuario.id}`;
-    return fetch(url, { cache: "no-store" })
+    const url = `${base}?_=${Date.now()}`;
+    return fetch(url, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    })
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok) setDefensas(d.defensas);
+        if (fetchId !== defensasFetchId.current) return;
+        if (d.ok) {
+          defensasLoadedOnce.current = true;
+          setDefensas(d.defensas ?? []);
+        }
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
-  };
+      .finally(() => {
+        if (fetchId === defensasFetchId.current) {
+          setLoading(false);
+        }
+      });
+  }, [usuario]);
 
   const cargarDelegados = () => {
     if (!usuario || usuario.rol !== 0) return;
@@ -2556,8 +2581,9 @@ export default function Dashboard() {
               loading={loading}
               delegados={delegados}
               onIrCrear={() => router.push("/admin/defensas/nueva")}
-              onRecargar={() => {
-                cargarDefensas();
+              onQuitarDefensa={quitarDefensaLocal}
+              onRecargar={async () => {
+                await cargarDefensas();
                 cargarDelegados();
               }}
             />
