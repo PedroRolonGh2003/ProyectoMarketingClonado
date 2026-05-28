@@ -365,6 +365,23 @@ body {
   border: 1px solid var(--gray-200);
 }
 
+.status-with-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rejected-reason {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.78rem;
+  color: var(--gray-600);
+  line-height: 1.35;
+}
+
 /* ─── Buttons ────────────────────────────────────────── */
 .btn-primary {
   display: inline-flex;

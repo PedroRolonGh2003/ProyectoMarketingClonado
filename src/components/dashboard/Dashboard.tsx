@@ -51,6 +51,7 @@ interface Defensa {
   nombreDelegado?: string;
   apellidoDelegado?: string;
   idDelegado?: number;
+  motivoRechazo?: string | null;
 }
 
 interface Delegado {
@@ -1621,14 +1622,19 @@ function VistaAdminDefensas({
                         )}
                       </td>
                       <td>
-                        <div
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
+                        <div className="status-with-note">
                           <BadgeEstado estado={estadoAdminDefensa(d)} />
+                          {estadoAdminDefensa(d).toLowerCase() ===
+                            "rechazada" && d.motivoRechazo ? (
+                            <p
+                              className="rejected-reason"
+                              title={d.motivoRechazo}
+                            >
+                              {d.motivoRechazo.length > 70
+                                ? `${d.motivoRechazo.slice(0, 70)}...`
+                                : d.motivoRechazo}
+                            </p>
+                          ) : null}
                           {estadoAdminDefensa(d).toLowerCase() ===
                             "completada" && (
                             <button
@@ -1843,6 +1849,19 @@ function VistaAdminDefensas({
               <p className="text-muted" style={{ fontSize: "0.85rem" }}>
                 Delegado: {editForm.nombreDelegado} {editForm.apellidoDelegado}
               </p>
+            )}
+
+            {estadoAdminDefensa(editForm).toLowerCase() === "rechazada" && (
+              <div className="detail-section mt-14">
+                <h4 className="detail-section__title">Motivo de rechazo</h4>
+                <p
+                  className="detail-field__value"
+                  style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}
+                >
+                  {editForm.motivoRechazo?.trim() ||
+                    "No se registró motivo de rechazo."}
+                </p>
+              </div>
             )}
 
             {editMsg && <p className="form__error mt-8">{editMsg}</p>}

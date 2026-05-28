@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { actualizarEstadoAsignacion } from "@/server/asignacion";
+import {
+  actualizarEstadoAsignacion,
+  ValidationError,
+} from "@/server/asignacion";
 
 type Ctx = { params: { id: string } };
 
@@ -14,6 +17,7 @@ export async function PUT(request: Request, context: Ctx) {
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error";
-    return NextResponse.json({ ok: false, mensaje: message }, { status: 500 });
+    const status = err instanceof ValidationError ? 400 : 500;
+    return NextResponse.json({ ok: false, mensaje: message }, { status });
   }
 }

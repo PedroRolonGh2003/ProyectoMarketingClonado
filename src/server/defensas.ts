@@ -215,8 +215,42 @@ export async function getDefensasLista() {
   return rows;
 }
 
+const MOTIVO_COLUMN_CANDIDATES = [
+  "justificacion",
+  "motivoRechazo",
+  "motivo_rechazo",
+  "motivo",
+  "comentario",
+  "observaciones",
+  "descripcion",
+  "descripcion_rechazo",
+];
+
+let cachedAsignacionDelegadoReasonField: string | null | undefined;
+
+async function getAsignacionDelegadoReasonField(): Promise<string | null> {
+  if (cachedAsignacionDelegadoReasonField !== undefined) {
+    return cachedAsignacionDelegadoReasonField;
+  }
+  const pool = getPool();
+  const placeholders = MOTIVO_COLUMN_CANDIDATES.map(() => "?").join(", ");
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'AsignacionDelegado'
+       AND COLUMN_NAME IN (${placeholders})
+     LIMIT 1`,
+    MOTIVO_COLUMN_CANDIDATES,
+  );
+  const list = rows as Array<{ COLUMN_NAME: string }>;
+  cachedAsignacionDelegadoReasonField = list[0]?.COLUMN_NAME ?? null;
+  return cachedAsignacionDelegadoReasonField;
+}
+
 export async function getAdminDefensaPorId(idDefensa: string | number) {
   const pool = getPool();
+  const motivoCol = await getAsignacionDelegadoReasonField();
+  const selectReason = motivoCol ? `, ad.${motivoCol} AS motivoRechazo` : "";
   const [rows] = await pool.query(
     `SELECT
        d.idDefensa, d.fecha, d.lugar, d.estado,
@@ -225,6 +259,7 @@ export async function getAdminDefensaPorId(idDefensa: string | number) {
        ad.idAsignacion, ad.estado AS estadoAsignacion,
        u.nombre AS nombreDelegado, u.apellido AS apellidoDelegado,
        u.idUsuario AS idDelegado
+       ${selectReason}
      FROM Defensa d
      JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
      JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
@@ -240,6 +275,8 @@ export async function getAdminDefensaPorId(idDefensa: string | number) {
 
 export async function getAdminDefensas() {
   const pool = getPool();
+  const motivoCol = await getAsignacionDelegadoReasonField();
+  const selectReason = motivoCol ? `, ad.${motivoCol} AS motivoRechazo` : "";
   const [rows] = await pool.query(
     `SELECT
        d.idDefensa, d.fecha, d.lugar, d.estado,
@@ -248,6 +285,7 @@ export async function getAdminDefensas() {
        ad.idAsignacion, ad.estado AS estadoAsignacion,
        u.nombre AS nombreDelegado, u.apellido AS apellidoDelegado,
        u.idUsuario AS idDelegado
+       ${selectReason}
      FROM Defensa d
      JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
      JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante

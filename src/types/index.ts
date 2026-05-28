@@ -21,6 +21,7 @@ export interface Defensa {
   apellidoEstudiante: string;
   nombreDelegado?: string;
   apellidoDelegado?: string;
+  motivoRechazo?: string | null;
 }
 
 export interface Delegado {
