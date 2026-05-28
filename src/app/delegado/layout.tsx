@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
-import PushSubscribe from "@/components/pwa/PushSubscribe";
 
 export default function DelegadoLayout({
   children,
@@ -27,10 +26,5 @@ export default function DelegadoLayout({
     );
   }
 
-  return (
-    <>
-      <PushSubscribe usuarioId={usuario.id} />
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }

@@ -1,15 +1,14 @@
 // src/app/api/admin/defensas/[idDefensa]/recordatorio/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import type { RowDataPacket } from "mysql2";
-import { getPool } from "@/lib/db";
+import {
+  defensaEstaCancelada,
+  defensaYaEstaCompletada,
+  getDefensaParaRecordatorio,
+} from "@/server/defensas";
 import { enviarPushAUsuario } from "@/server/push";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-interface DefensaDelegadoRow extends RowDataPacket {
-  idUsuario: number | null;
-}
 
 async function resolveIdDefensa(
   params: { idDefensa: string } | Promise<{ idDefensa: string }>,
@@ -51,27 +50,36 @@ export async function POST(
       // body opcional
     }
 
-    const pool = getPool();
-
-    const [rows] = await pool.query<DefensaDelegadoRow[]>(
-      `SELECT u.idUsuario
-       FROM Defensa d
-       LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
-       LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario AND u.activo = 1
-       WHERE d.idDefensa = ?
-       LIMIT 1`,
-      [idDefensa],
-    );
-
-    if (rows.length === 0) {
+    const defensaInfo = await getDefensaParaRecordatorio(idDefensa);
+    if (!defensaInfo) {
       return NextResponse.json(
         { ok: false, mensaje: "Defensa no encontrada" },
         { status: 404 },
       );
     }
 
-    const idDelegado = Number(rows[0]?.idUsuario || idDelegadoBody);
+    if (defensaYaEstaCompletada(defensaInfo)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          mensaje:
+            "No se puede enviar recordatorio porque la defensa ya fue completada.",
+        },
+        { status: 400 },
+      );
+    }
 
+    if (defensaEstaCancelada(defensaInfo)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          mensaje: "No se puede enviar recordatorio porque la defensa fue cancelada.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const idDelegado = Number(defensaInfo.idDelegado || idDelegadoBody);
     if (!idDelegado) {
       return NextResponse.json(
         { ok: false, mensaje: "La defensa no tiene delegado asignado" },
@@ -90,7 +98,7 @@ export async function POST(
         {
           ok: false,
           mensaje:
-            "El delegado no tiene notificaciones activadas. Debe entrar como delegado y pulsar «Activar notificaciones».",
+            "No se pudo enviar el recordatorio porque el delegado no tiene notificaciones activadas.",
         },
         { status: 400 },
       );

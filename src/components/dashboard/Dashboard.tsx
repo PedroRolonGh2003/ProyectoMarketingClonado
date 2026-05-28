@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import PushSubscribe from "@/components/pwa/PushSubscribe";
 import {
   adminPathFromNav,
   delegadoPathFromNav,
@@ -327,6 +328,11 @@ function estadoAdminDefensa(d: Defensa): string {
   if (d.estadoAsignacion) return d.estadoAsignacion;
   if (!d.nombreDelegado && !d.idDelegado) return "sin asignar";
   return d.estado || "pendiente";
+}
+
+function esEstadoFinalizado(estado: string) {
+  const norm = String(estado).toLowerCase().trim();
+  return norm === "completada" || norm === "completado" || norm === "cancelada" || norm === "cancelado";
 }
 
 function BadgeEstado({ estado }: { estado: string }) {
@@ -930,7 +936,6 @@ function VistaPerfil({
   onLogout: () => void;
 }) {
   const [modalPass, setModalPass] = useState(false);
-  const [notifs, setNotifs] = useState(true);
   const [passForm, setPassForm] = useState({
     actual: "",
     nueva: "",
@@ -1009,33 +1014,11 @@ function VistaPerfil({
           </button>
         </div>
 
-        <div className="detail-section">
-          <h4 className="detail-section__title">Notificaciones</h4>
-          <div className="toggle-row">
-            <div>
-              <p className="toggle-label">Activar notificaciones</p>
-              <p className="toggle-sub">
-                Recibir alertas de nuevas convocatorias
-              </p>
-            </div>
-
-            <label
-              className={`toggle ${notifs ? "toggle--on" : ""}`}
-              htmlFor="perfil-notificaciones"
-              aria-label="Activar o desactivar notificaciones"
-              title="Activar o desactivar notificaciones"
-            >
-              <input
-                id="perfil-notificaciones"
-                type="checkbox"
-                checked={notifs}
-                onChange={(e) => setNotifs(e.target.checked)}
-                className="sr-only"
-              />
-              <span className="toggle__knob" />
-            </label>
+        {usuario.rol === 1 && (
+          <div className="detail-section">
+            <PushSubscribe usuarioId={usuario.id} />
           </div>
-        </div>
+        )}
 
         <button className="btn-logout-full" onClick={onLogout}>
           <Ico d={icons.logout} size={18} /> Cerrar sesión
@@ -1641,7 +1624,10 @@ function VistaAdminDefensas({
                           {d.idDelegado && (
                             <button
                               className="btn-outline btn-sm"
-                              disabled={recordatorioLoading.has(d.idDefensa)}
+                              disabled={
+                                recordatorioLoading.has(d.idDefensa) ||
+                                esEstadoFinalizado(estadoAdminDefensa(d))
+                              }
                               onClick={() =>
                                 handleRecordatorio(d.idDefensa, d.idDelegado!)
                               }

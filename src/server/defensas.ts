@@ -2,6 +2,80 @@ import type { ResultSetHeader } from "mysql2";
 import { getPool } from "@/lib/db";
 import { normalizarFechaMySQL } from "@/lib/defensa-form";
 
+type RecordatorioDefensaInfo = {
+  idDelegado: number | null;
+  estadoDefensa: string | null;
+  estadoAsignacion: string | null;
+  tieneEvidencia: boolean;
+};
+
+const estadoEsCompletado = (estado: string | null | undefined) => {
+  return ["completada", "completado"].includes(
+    String(estado ?? "").toLowerCase().trim(),
+  );
+};
+
+const estadoEsCancelado = (estado: string | null | undefined) => {
+  return ["cancelada", "cancelado"].includes(
+    String(estado ?? "").toLowerCase().trim(),
+  );
+};
+
+export async function getDefensaParaRecordatorio(
+  idDefensa: string | number,
+): Promise<RecordatorioDefensaInfo | null> {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT
+       d.idDefensa,
+       d.estado AS estadoDefensa,
+       MAX(ad.estado) AS estadoAsignacion,
+       MAX(u.idUsuario) AS idDelegado,
+       COUNT(e.idEvidencia) AS cantidadEvidencias
+     FROM Defensa d
+     LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
+     LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
+     LEFT JOIN Evidencia e ON ad.idAsignacion = e.idAsignacion
+     WHERE d.idDefensa = ?
+     GROUP BY d.idDefensa, d.estado
+     LIMIT 1`,
+    [idDefensa],
+  );
+
+  const list = rows as Array<{
+    estadoDefensa: string | null;
+    estadoAsignacion: string | null;
+    idDelegado: number | null;
+    cantidadEvidencias: number | null;
+  }>;
+  const row = list[0] ?? null;
+  if (!row) {
+    return null;
+  }
+
+  return {
+    idDelegado: row.idDelegado,
+    estadoDefensa: row.estadoDefensa,
+    estadoAsignacion: row.estadoAsignacion,
+    tieneEvidencia: Number(row.cantidadEvidencias ?? 0) > 0,
+  };
+}
+
+export function defensaYaEstaCompletada(info: RecordatorioDefensaInfo) {
+  return (
+    estadoEsCompletado(info.estadoDefensa) ||
+    estadoEsCompletado(info.estadoAsignacion) ||
+    info.tieneEvidencia
+  );
+}
+
+export function defensaEstaCancelada(info: RecordatorioDefensaInfo) {
+  return (
+    estadoEsCancelado(info.estadoDefensa) ||
+    estadoEsCancelado(info.estadoAsignacion)
+  );
+}
+
 export async function getDefensasDelegado(idDelegado: string) {
   const pool = getPool();
   const [rows] = await pool.query(

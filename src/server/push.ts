@@ -69,6 +69,20 @@ export async function obtenerSuscripcionesUsuario(
   }));
 }
 
+export async function eliminarSuscripcionesUsuario(usuarioId: number) {
+  const pool = getPool();
+  await pool.query("DELETE FROM SuscripcionPush WHERE idUsuario = ?", [
+    usuarioId,
+  ]);
+}
+
+export async function tieneSuscripcionesPushActivas(
+  usuarioId: number,
+): Promise<boolean> {
+  const subs = await obtenerSuscripcionesUsuario(usuarioId);
+  return subs.length > 0;
+}
+
 export async function eliminarSuscripcionPorEndpoint(
   endpoint: string,
 ): Promise<void> {
