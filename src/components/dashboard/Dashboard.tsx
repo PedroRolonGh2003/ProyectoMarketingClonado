@@ -12,8 +12,15 @@ import {
 } from "@/lib/routes";
 import {
   buildFechaHoraISO,
+  isoALocalNaive,
+  localNaiveAISO,
   parseNombreEstudiante,
 } from "@/lib/defensa-form";
+import {
+  defensaEditarSchema,
+  delegadoEditarSchema,
+  delegadoNuevoSchema,
+} from "@/lib/schemas";
 import "./Dashboard.css";
 
 const API = "/api";
@@ -254,30 +261,67 @@ const icons: Record<string, React.ReactNode> = {
 };
 
 // HELPERS
-const fFecha = (f: string) =>
-  f
-    ? new Date(f).toLocaleDateString("es-BO", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
-    : "-";
-const fFechaCorta = (f: string) =>
-  f
-    ? new Date(f).toLocaleDateString("es-BO", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
-    : "-";
-const fHora = (f: string) =>
-  f
-    ? new Date(f).toLocaleTimeString("es-BO", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "-";
+// Las fechas de defensa se manejan como wall-clock literal: lo que está en la
+// cadena (ISO o "YYYY-MM-DD HH:MM:SS") es lo que el usuario ve y edita. No
+// hacemos conversión de timezone para evitar desfases por años extremos o por
+// la zona horaria del proceso.
+const MESES_ES = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+const DIAS_ES = [
+  "domingo",
+  "lunes",
+  "martes",
+  "miércoles",
+  "jueves",
+  "viernes",
+  "sábado",
+];
+
+const fFecha = (f: string) => {
+  if (!f) return "-";
+  const m = f.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "-";
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  // Día de la semana usando algoritmo de Zeller (timezone-independent).
+  const yy = mo < 3 ? y - 1 : y;
+  const mm = mo < 3 ? mo + 12 : mo;
+  const k = yy % 100;
+  const j = Math.floor(yy / 100);
+  const h = (d + Math.floor((13 * (mm + 1)) / 5) + k + Math.floor(k / 4) + Math.floor(j / 4) + 5 * j) % 7;
+  // Zeller: 0=sábado, 1=domingo, ..., 6=viernes → mapear a domingo=0..sábado=6.
+  const idxDia = (h + 6) % 7;
+  return `${DIAS_ES[idxDia]}, ${d} de ${MESES_ES[mo - 1]} de ${y}`;
+};
+const fFechaCorta = (f: string) => {
+  if (!f) return "-";
+  const m = f.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "-";
+  return `${m[3]}/${m[2]}/${m[1]}`;
+};
+const fHora = (f: string) => {
+  if (!f) return "-";
+  const m = f.match(/[T ](\d{2}):(\d{2})/);
+  if (!m) return "-";
+  let h = Number(m[1]);
+  const mins = m[2];
+  const ampm = h >= 12 ? "p. m." : "a. m.";
+  h = h % 12 || 12;
+  return `${h.toString().padStart(2, "0")}:${mins} ${ampm}`;
+};
 
 function estadoAdminDefensa(d: Defensa): string {
   if (d.estadoAsignacion) return d.estadoAsignacion;
@@ -293,6 +337,7 @@ function BadgeEstado({ estado }: { estado: string }) {
     completada: "badge--completada",
     completado: "badge--completada",
     convocada: "badge--convocada",
+    cancelada: "badge--cancelada",
     "sin asignar": "badge--sin-asignar",
   };
   const labels: Record<string, string> = {
@@ -302,6 +347,7 @@ function BadgeEstado({ estado }: { estado: string }) {
     completada: "Completada",
     completado: "Completada",
     convocada: "Convocada",
+    cancelada: "Cancelada",
     "sin asignar": "Sin asignar",
   };
   const cls = map[estado?.toLowerCase()] || "badge--pendiente";
@@ -1250,6 +1296,7 @@ function VistaAdminDefensas({
   onRecargar: () => void | Promise<void>;
   onQuitarDefensa: (idDefensa: number) => void;
 }) {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroDelegado, setFiltro] = useState("");
   const [modalAsignar, setModalAsignar] = useState<Defensa | null>(null);
@@ -1257,6 +1304,9 @@ function VistaAdminDefensas({
   const [editForm, setEditForm] = useState<Defensa | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [editMsg, setEditMsg] = useState("");
+  const [editFieldErrors, setEditFieldErrors] = useState<
+    Record<string, string>
+  >({});
   const [busqDelegado, setBusqDelegado] = useState("");
   const [delegadoSel, setDelegadoSel] = useState<Delegado | null>(null);
   const [msgAsignar, setMsgAsignar] = useState("");
@@ -1324,9 +1374,29 @@ function VistaAdminDefensas({
 
   const handleGuardarEdicion = async () => {
     if (!editForm) return;
+
+    const parsed = defensaEditarSchema.safeParse({
+      titulo: editForm.titulo,
+      nombreEstudiante: editForm.nombreEstudiante,
+      apellidoEstudiante: editForm.apellidoEstudiante,
+      fecha: editForm.fecha,
+      lugar: editForm.lugar,
+    });
+    if (!parsed.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of parsed.error.issues) {
+        const key = String(issue.path[0] ?? "");
+        if (key && !errs[key]) errs[key] = issue.message;
+      }
+      setEditFieldErrors(errs);
+      return;
+    }
+    setEditFieldErrors({});
+
     setEditLoading(true);
     setEditMsg("");
     try {
+      const fechaUTC = localNaiveAISO(editForm.fecha);
       const res = await fetch(
         `${API}/admin/defensas/${editForm.idDefensa}`,
         {
@@ -1336,7 +1406,7 @@ function VistaAdminDefensas({
             titulo: editForm.titulo,
             nombreEstudiante: editForm.nombreEstudiante,
             apellidoEstudiante: editForm.apellidoEstudiante,
-            fecha: editForm.fecha,
+            fecha: fechaUTC,
             lugar: editForm.lugar,
             estado: editForm.estado,
           }),
@@ -1349,6 +1419,43 @@ function VistaAdminDefensas({
         await onRecargar();
       } else {
         setEditMsg(data.mensaje || "Error al guardar");
+      }
+    } catch {
+      setEditMsg("Sin conexión");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCancelarDefensa = async () => {
+    if (!editForm) return;
+    if (!window.confirm("¿Cancelar esta defensa?")) return;
+    setEditLoading(true);
+    setEditMsg("");
+    try {
+      const fechaUTC = localNaiveAISO(editForm.fecha);
+      const res = await fetch(
+        `${API}/admin/defensas/${editForm.idDefensa}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            titulo: editForm.titulo,
+            nombreEstudiante: editForm.nombreEstudiante,
+            apellidoEstudiante: editForm.apellidoEstudiante,
+            fecha: fechaUTC,
+            lugar: editForm.lugar,
+            estado: "cancelada",
+          }),
+        },
+      );
+      const data = await res.json();
+      if (data.ok) {
+        setModalVer(null);
+        setEditForm(null);
+        await onRecargar();
+      } else {
+        setEditMsg(data.mensaje || "Error al cancelar");
       }
     } catch {
       setEditMsg("Sin conexión");
@@ -1487,7 +1594,31 @@ function VistaAdminDefensas({
                         )}
                       </td>
                       <td>
-                        <BadgeEstado estado={estadoAdminDefensa(d)} />
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <BadgeEstado estado={estadoAdminDefensa(d)} />
+                          {estadoAdminDefensa(d).toLowerCase() ===
+                            "completada" && (
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Ver evidencias"
+                              aria-label="Ver evidencias"
+                              onClick={() =>
+                                router.push(
+                                  `/admin/defensas/${d.idDefensa}/evidencias`,
+                                )
+                              }
+                            >
+                              <Ico d={icons.doc} size={16} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <div className="acciones-row">
@@ -1523,8 +1654,12 @@ function VistaAdminDefensas({
                             title="Ver / Editar"
                             onClick={() => {
                               setModalVer(d);
-                              setEditForm({ ...d });
+                              setEditForm({
+                                ...d,
+                                fecha: isoALocalNaive(d.fecha),
+                              });
                               setEditMsg("");
+                              setEditFieldErrors({});
                             }}
                           >
                             <Ico d={icons.eye} size={16} />
@@ -1544,15 +1679,27 @@ function VistaAdminDefensas({
         <Modal
           title="Detalle de defensa"
           subtitle=""
-          onClose={() => { setModalVer(null); setEditForm(null); }}
+          onClose={() => {
+            setModalVer(null);
+            setEditForm(null);
+            setEditFieldErrors({});
+          }}
         >
           <div className="modal__body">
             <label className="form__label">Título</label>
             <input
-              className="form__input mb-12"
+              className="form__input"
               value={editForm.titulo}
-              onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })}
+              onChange={(e) => {
+                setEditForm({ ...editForm, titulo: e.target.value });
+                if (editFieldErrors.titulo)
+                  setEditFieldErrors({ ...editFieldErrors, titulo: "" });
+              }}
             />
+            {editFieldErrors.titulo && (
+              <p className="form__error">{editFieldErrors.titulo}</p>
+            )}
+            <div className="mb-12" />
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
               <div>
@@ -1560,45 +1707,101 @@ function VistaAdminDefensas({
                 <input
                   className="form__input"
                   value={editForm.nombreEstudiante}
-                  onChange={(e) => setEditForm({ ...editForm, nombreEstudiante: e.target.value })}
+                  onChange={(e) => {
+                    setEditForm({
+                      ...editForm,
+                      nombreEstudiante: e.target.value,
+                    });
+                    if (editFieldErrors.nombreEstudiante)
+                      setEditFieldErrors({
+                        ...editFieldErrors,
+                        nombreEstudiante: "",
+                      });
+                  }}
                 />
+                {editFieldErrors.nombreEstudiante && (
+                  <p className="form__error">
+                    {editFieldErrors.nombreEstudiante}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="form__label">Apellido estudiante</label>
                 <input
                   className="form__input"
                   value={editForm.apellidoEstudiante}
-                  onChange={(e) => setEditForm({ ...editForm, apellidoEstudiante: e.target.value })}
+                  onChange={(e) => {
+                    setEditForm({
+                      ...editForm,
+                      apellidoEstudiante: e.target.value,
+                    });
+                    if (editFieldErrors.apellidoEstudiante)
+                      setEditFieldErrors({
+                        ...editFieldErrors,
+                        apellidoEstudiante: "",
+                      });
+                  }}
                 />
+                {editFieldErrors.apellidoEstudiante && (
+                  <p className="form__error">
+                    {editFieldErrors.apellidoEstudiante}
+                  </p>
+                )}
               </div>
             </div>
 
             <label className="form__label mt-12">Fecha</label>
             <input
-              className="form__input mb-12"
+              className="form__input"
               type="datetime-local"
-              value={editForm.fecha ? editForm.fecha.slice(0, 16) : ""}
-              onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
+              value={editForm.fecha || ""}
+              onChange={(e) => {
+                setEditForm({ ...editForm, fecha: e.target.value });
+                if (editFieldErrors.fecha)
+                  setEditFieldErrors({ ...editFieldErrors, fecha: "" });
+              }}
             />
+            {editFieldErrors.fecha && (
+              <p className="form__error">{editFieldErrors.fecha}</p>
+            )}
+            <div className="mb-12" />
 
             <label className="form__label">Lugar</label>
             <input
-              className="form__input mb-12"
+              className="form__input"
               value={editForm.lugar}
-              onChange={(e) => setEditForm({ ...editForm, lugar: e.target.value })}
+              onChange={(e) => {
+                setEditForm({ ...editForm, lugar: e.target.value });
+                if (editFieldErrors.lugar)
+                  setEditFieldErrors({ ...editFieldErrors, lugar: "" });
+              }}
             />
+            {editFieldErrors.lugar && (
+              <p className="form__error">{editFieldErrors.lugar}</p>
+            )}
+            <div className="mb-12" />
 
             <label className="form__label">Estado</label>
-            <select
-              className="form__input mb-12"
-              value={editForm.estado}
-              onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })}
-            >
-              <option value="pendiente">Pendiente</option>
-              <option value="confirmada">Confirmada</option>
-              <option value="completada">Completada</option>
-              <option value="cancelada">Cancelada</option>
-            </select>
+            <div className="mb-12">
+              <BadgeEstado estado={estadoAdminDefensa(editForm)} />
+            </div>
+            {(() => {
+              const estadoVisible = estadoAdminDefensa(editForm).toLowerCase();
+              const yaFinalizada =
+                estadoVisible === "cancelada" ||
+                estadoVisible === "completada" ||
+                estadoVisible === "completado";
+              return yaFinalizada ? null : (
+                <button
+                  type="button"
+                  className="btn-danger mb-12"
+                  disabled={editLoading}
+                  onClick={handleCancelarDefensa}
+                >
+                  Cancelar defensa
+                </button>
+              );
+            })()}
 
             {editForm.nombreDelegado && (
               <p className="text-muted" style={{ fontSize: "0.85rem" }}>
@@ -1611,7 +1814,11 @@ function VistaAdminDefensas({
           <div className="modal__footer">
             <button
               className="btn-outline"
-              onClick={() => { setModalVer(null); setEditForm(null); }}
+              onClick={() => {
+                setModalVer(null);
+                setEditForm(null);
+                setEditFieldErrors({});
+              }}
             >
               Cancelar
             </button>
@@ -1914,6 +2121,7 @@ function VistaAdminDelegados() {
     telefono: "",
     password: "",
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -1957,12 +2165,30 @@ function VistaAdminDelegados() {
   }, []);
 
   const save = async () => {
+    const schema =
+      modal?.mode === "new" ? delegadoNuevoSchema : delegadoEditarSchema;
+    const parsed = schema.safeParse(form);
+    if (!parsed.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of parsed.error.issues) {
+        const key = String(issue.path[0] ?? "");
+        if (key && !errs[key]) errs[key] = issue.message;
+      }
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
+
     try {
+      const payload =
+        modal?.mode === "edit" && !form.password.trim()
+          ? { ...form, password: undefined }
+          : form;
       if (modal?.mode === "new") {
         const res = await fetch(`${API}/admin/delegados`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
         const d = await res.json();
         if (!d.ok) throw new Error(d.mensaje || "Error");
@@ -1972,7 +2198,7 @@ function VistaAdminDelegados() {
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
+            body: JSON.stringify(payload),
           },
         );
         const d = await res.json();
@@ -2052,6 +2278,7 @@ function VistaAdminDelegados() {
                             telefono: d.telefono || "",
                             password: "",
                           });
+                          setFieldErrors({});
                           setModal({ mode: "edit", delegado: d });
                         }}
                       >
@@ -2150,7 +2377,10 @@ function VistaAdminDelegados() {
       {modal && (
         <Modal
           title={modal.mode === "new" ? "Nuevo delegado" : "Editar delegado"}
-          onClose={() => setModal(null)}
+          onClose={() => {
+            setModal(null);
+            setFieldErrors({});
+          }}
         >
           <div className="modal__body">
             <div className="form__group mb-12">
@@ -2162,8 +2392,15 @@ function VistaAdminDelegados() {
                 className="form__input"
                 type="text"
                 value={form.nombre}
-                onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, nombre: e.target.value });
+                  if (fieldErrors.nombre)
+                    setFieldErrors({ ...fieldErrors, nombre: "" });
+                }}
               />
+              {fieldErrors.nombre && (
+                <p className="form__error">{fieldErrors.nombre}</p>
+              )}
             </div>
 
             <div className="form__group mb-12">
@@ -2175,8 +2412,15 @@ function VistaAdminDelegados() {
                 className="form__input"
                 type="text"
                 value={form.apellido}
-                onChange={(e) => setForm({ ...form, apellido: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, apellido: e.target.value });
+                  if (fieldErrors.apellido)
+                    setFieldErrors({ ...fieldErrors, apellido: "" });
+                }}
               />
+              {fieldErrors.apellido && (
+                <p className="form__error">{fieldErrors.apellido}</p>
+              )}
             </div>
 
             <div className="form__group mb-12">
@@ -2188,8 +2432,15 @@ function VistaAdminDelegados() {
                 className="form__input"
                 type="email"
                 value={form.correo}
-                onChange={(e) => setForm({ ...form, correo: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, correo: e.target.value });
+                  if (fieldErrors.correo)
+                    setFieldErrors({ ...fieldErrors, correo: "" });
+                }}
               />
+              {fieldErrors.correo && (
+                <p className="form__error">{fieldErrors.correo}</p>
+              )}
             </div>
 
             <div className="form__group mb-12">
@@ -2201,8 +2452,15 @@ function VistaAdminDelegados() {
                 className="form__input"
                 type="text"
                 value={form.telefono}
-                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, telefono: e.target.value });
+                  if (fieldErrors.telefono)
+                    setFieldErrors({ ...fieldErrors, telefono: "" });
+                }}
               />
+              {fieldErrors.telefono && (
+                <p className="form__error">{fieldErrors.telefono}</p>
+              )}
             </div>
 
             <div className="form__group mb-12">
@@ -2216,8 +2474,15 @@ function VistaAdminDelegados() {
                 className="form__input"
                 type="password"
                 value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, password: e.target.value });
+                  if (fieldErrors.password)
+                    setFieldErrors({ ...fieldErrors, password: "" });
+                }}
               />
+              {fieldErrors.password && (
+                <p className="form__error">{fieldErrors.password}</p>
+              )}
             </div>
 
             {modal.mode === "edit" && modal.delegado && (
@@ -2252,7 +2517,10 @@ function VistaAdminDelegados() {
           <div className="modal__footer">
             <button
               className="btn-outline"
-              onClick={() => setModal(null)}
+              onClick={() => {
+                setModal(null);
+                setFieldErrors({});
+              }}
               type="button"
             >
               Cancelar
@@ -2542,6 +2810,26 @@ export default function Dashboard() {
   }, [usuario]);
 
   useEffect(() => {
+    if (!usuario) return;
+    const refrescar = () => {
+      if (document.visibilityState !== "visible") return;
+      cargarDefensas();
+      if (usuario.rol === 0) cargarDelegados();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refrescar();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", refrescar);
+    const interval = setInterval(refrescar, 20_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", refrescar);
+      clearInterval(interval);
+    };
+  }, [usuario, cargarDefensas]);
+
+  useEffect(() => {
     if (!usuario || authLoading) return;
     if (usuario.rol === 0) {
       setNav(navFromAdminPath(pathname));
@@ -2601,22 +2889,29 @@ export default function Dashboard() {
 
   const handleEvidencia = async ({
     defensa,
+    imagen,
+    pdf,
     comentarios,
   }: {
     defensa: Defensa;
+    imagen?: File | null;
+    pdf?: File | null;
     comentarios?: string;
   }) => {
+    const form = new FormData();
+    if (imagen) form.append("imagen", imagen);
+    if (pdf) form.append("pdf", pdf);
+    form.append("comentarios", comentarios ?? "");
     const res = await fetch(
       `${API}/asignacion/${defensa.idAsignacion}/completar`,
       {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comentarios }),
+        body: form,
       },
     );
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      console.error(data.mensaje || "Error al completar la defensa");
+      alert(data.mensaje || "Error al completar la defensa");
       return;
     }
     router.push("/delegado/completadas");

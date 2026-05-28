@@ -189,12 +189,29 @@ export async function crearPagoPendientePorDefensa(
     `INSERT INTO Pago (idDefensa, monto, estado) VALUES (?, ?, 'pendiente')`,
   ];
 
+  const forzarPendiente = async (idPago: number) => {
+    try {
+      await pool.query(
+        "UPDATE Pago SET estado = 'pendiente', fechaPago = NULL WHERE idPago = ?",
+        [idPago],
+      );
+    } catch (err) {
+      console.error(
+        "[pagos] no se pudo forzar pago pendiente:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  };
+
   let lastError: unknown;
   for (const sql of attempts) {
     try {
       const [result] = await pool.query(sql, [idDefensa, MONTO_PAGO_DEFENSA]);
-      if ((result as ResultSetHeader).insertId) {
-        return (result as ResultSetHeader).insertId;
+      const insertId = (result as ResultSetHeader).insertId;
+      if (insertId) {
+        // Sobrescribe cualquier DEFAULT CURRENT_TIMESTAMP que MySQL haya aplicado.
+        await forzarPendiente(insertId);
+        return insertId;
       }
       const [found] = await pool.query(
         "SELECT idPago FROM Pago WHERE idDefensa = ? LIMIT 1",

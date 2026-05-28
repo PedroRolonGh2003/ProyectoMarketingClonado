@@ -21,6 +21,9 @@ function createPool() {
     ssl: { rejectUnauthorized: false },
     waitForConnections: true,
     connectionLimit: 10,
+    // Trata los DATETIME como UTC literal: lo que está en MySQL es lo que se
+    // serializa, sin convertir según la zona del proceso Node.
+    timezone: "Z",
   });
 }
 

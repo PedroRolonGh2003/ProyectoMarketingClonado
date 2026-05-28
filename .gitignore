@@ -30,3 +30,6 @@ yarn-error.log*
 # backups / artefactos que no son fuente
 node_modules_backup/
 backend/node_modules/
+
+# evidencias subidas por delegados (no se versionan)
+public/uploads/

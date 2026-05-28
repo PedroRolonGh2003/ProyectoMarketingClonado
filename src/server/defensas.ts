@@ -1,5 +1,6 @@
 import type { ResultSetHeader } from "mysql2";
 import { getPool } from "@/lib/db";
+import { normalizarFechaMySQL } from "@/lib/defensa-form";
 
 export async function getDefensasDelegado(idDelegado: string) {
   const pool = getPool();
@@ -44,6 +45,29 @@ export async function getDefensasLista() {
      ORDER BY d.fecha DESC`,
   );
   return rows;
+}
+
+export async function getAdminDefensaPorId(idDefensa: string | number) {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT
+       d.idDefensa, d.fecha, d.lugar, d.estado,
+       pt.titulo,
+       e.nombre AS nombreEstudiante, e.apellido AS apellidoEstudiante,
+       ad.idAsignacion, ad.estado AS estadoAsignacion,
+       u.nombre AS nombreDelegado, u.apellido AS apellidoDelegado,
+       u.idUsuario AS idDelegado
+     FROM Defensa d
+     JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
+     JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
+     LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
+     LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
+     WHERE d.idDefensa = ?
+     LIMIT 1`,
+    [idDefensa],
+  );
+  const list = rows as Record<string, unknown>[];
+  return list[0] ?? null;
 }
 
 export async function getAdminDefensas() {
@@ -128,6 +152,7 @@ export async function actualizarDefensa(
 ) {
   const pool = getPool();
   const estadoNorm = String(body.estado ?? "").toLowerCase().trim();
+  const fechaSql = normalizarFechaMySQL(body.fecha);
 
   await pool.query(
     `UPDATE Defensa d
@@ -137,7 +162,7 @@ export async function actualizarDefensa(
          e.nombre = ?, e.apellido = ?
      WHERE d.idDefensa = ?`,
     [
-      body.fecha,
+      fechaSql,
       body.lugar,
       body.estado,
       body.titulo,
@@ -161,6 +186,11 @@ export async function actualizarDefensa(
         err instanceof Error ? err.message : err,
       );
     }
+  } else if (estadoNorm === "cancelada") {
+    await pool.query(
+      `UPDATE AsignacionDelegado SET estado = 'cancelada' WHERE idDefensa = ?`,
+      [id],
+    );
   }
 }
 
