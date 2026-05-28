@@ -8,7 +8,6 @@ type Ctx = { params: { idDefensa: string } };
 
 type EvidenciaRow = {
   urlArchivo: string | null;
-  fechaRegistro?: string | Date | null;
   idAsignacion?: number | null;
 };
 
@@ -43,11 +42,11 @@ export async function GET(_req: Request, ctx: Ctx) {
 
     const pool = getPool();
     const [rows] = await pool.query(
-      `SELECT e.urlArchivo, e.fechaRegistro, ad.idAsignacion
+      `SELECT e.urlArchivo, ad.idAsignacion
        FROM AsignacionDelegado ad
        LEFT JOIN Evidencia e ON e.idAsignacion = ad.idAsignacion
        WHERE ad.idDefensa = ?
-       ORDER BY e.fechaRegistro DESC`,
+       ORDER BY e.idEvidencia DESC`,
       [idDefensa],
     );
 
@@ -59,7 +58,6 @@ export async function GET(_req: Request, ctx: Ctx) {
         return {
           ...parsed,
           idAsignacion: r.idAsignacion ?? null,
-          fechaRegistro: r.fechaRegistro ?? null,
         };
       })
       .filter(Boolean);
