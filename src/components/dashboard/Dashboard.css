@@ -279,6 +279,68 @@ body {
   color: var(--gray-600);
 }
 
+/* Completed defenses cards for mobile */
+.comp-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+.comp-card {
+  background: var(--white);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.comp-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.comp-card__student {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.comp-card__title {
+  color: var(--text-light);
+  font-size: 0.85rem;
+  margin-top: 4px;
+  line-height: 1.3;
+}
+.comp-card__meta {
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--gray-600);
+}
+.comp-card__date {
+  font-weight: 600;
+}
+.comp-card__place {
+  margin-top: 6px;
+}
+.comp-card__footer {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .comp-cards {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .table-wrap {
+    display: none;
+  }
+}
+
 /* ─── Badges ─────────────────────────────────────────── */
 .badge {
   font-size: 0.7rem;
@@ -380,6 +442,10 @@ body {
 .btn-outline:hover {
   background: var(--gray-100);
   border-color: var(--gray-400);
+}
+.btn-outline:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .btn-outline--full {
   width: 100%;
@@ -665,15 +731,28 @@ body {
   animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 .form__error::before {
-  content: '⚠';
+  content: "⚠";
   font-size: 1rem;
 }
 
 @keyframes shake {
-  10%, 90% { transform: translate3d(-1px, 0, 0); }
-  20%, 80% { transform: translate3d(2px, 0, 0); }
-  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-  40%, 60% { transform: translate3d(4px, 0, 0); }
+  10%,
+  90% {
+    transform: translate3d(-1px, 0, 0);
+  }
+  20%,
+  80% {
+    transform: translate3d(2px, 0, 0);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translate3d(-4px, 0, 0);
+  }
+  40%,
+  60% {
+    transform: translate3d(4px, 0, 0);
+  }
 }
 
 .form__msg--ok {
@@ -691,13 +770,19 @@ body {
   animation: slideIn 0.3s ease-out both;
 }
 .form__msg--ok::before {
-  content: '✓';
+  content: "✓";
   font-size: 1rem;
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ─── Table ──────────────────────────────────────────── */
@@ -1575,7 +1660,9 @@ body {
   background: #fff;
   color: #41464b;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 .icon-btn:hover {
   background: #f1f3f5;

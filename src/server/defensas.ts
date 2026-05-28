@@ -11,13 +11,17 @@ type RecordatorioDefensaInfo = {
 
 const estadoEsCompletado = (estado: string | null | undefined) => {
   return ["completada", "completado"].includes(
-    String(estado ?? "").toLowerCase().trim(),
+    String(estado ?? "")
+      .toLowerCase()
+      .trim(),
   );
 };
 
 const estadoEsCancelado = (estado: string | null | undefined) => {
   return ["cancelada", "cancelado"].includes(
-    String(estado ?? "").toLowerCase().trim(),
+    String(estado ?? "")
+      .toLowerCase()
+      .trim(),
   );
 };
 
@@ -74,6 +78,96 @@ export function defensaEstaCancelada(info: RecordatorioDefensaInfo) {
     estadoEsCancelado(info.estadoDefensa) ||
     estadoEsCancelado(info.estadoAsignacion)
   );
+}
+
+export async function getDefensasParaRecordatorio24h() {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT
+       d.idDefensa,
+       d.fecha,
+       d.estado AS estadoDefensa,
+       MAX(ad.estado) AS estadoAsignacion,
+       MAX(u.idUsuario) AS idDelegado,
+       COUNT(e.idEvidencia) AS cantidadEvidencias
+     FROM Defensa d
+     LEFT JOIN AsignacionDelegado ad ON d.idDefensa = ad.idDefensa
+     LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
+     LEFT JOIN Evidencia e ON ad.idAsignacion = e.idAsignacion
+     WHERE d.fecha BETWEEN DATE_ADD(NOW(), INTERVAL 23 HOUR)
+       AND DATE_ADD(DATE_ADD(NOW(), INTERVAL 24 HOUR), INTERVAL 30 MINUTE)
+     GROUP BY d.idDefensa, d.fecha, d.estado
+     ORDER BY d.fecha ASC`,
+  );
+
+  const list = rows as Array<{
+    idDefensa: number;
+    fecha: string;
+    estadoDefensa: string | null;
+    estadoAsignacion: string | null;
+    idDelegado: number | null;
+    cantidadEvidencias: number | null;
+  }>;
+
+  return list.map((r) => ({
+    idDefensa: r.idDefensa,
+    fecha: r.fecha,
+    estadoDefensa: r.estadoDefensa,
+    estadoAsignacion: r.estadoAsignacion,
+    idDelegado: r.idDelegado,
+    tieneEvidencia: Number(r.cantidadEvidencias ?? 0) > 0,
+  }));
+}
+
+async function ensureNotificacionTableExists() {
+  const pool = getPool();
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS NotificacionEnviada (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      idDefensa INT NOT NULL,
+      idDelegado INT NOT NULL,
+      tipo VARCHAR(64) NOT NULL,
+      fechaEnvio DATETIME NOT NULL,
+      UNIQUE KEY ux_notif_defensa_delegado_tipo (idDefensa, idDelegado, tipo)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  );
+}
+
+export async function yaSeEnvioRecordatorio24h(
+  idDefensa: number,
+  idDelegado: number,
+): Promise<boolean> {
+  const pool = getPool();
+  try {
+    await ensureNotificacionTableExists();
+    const [rows] = await pool.query(
+      "SELECT id FROM NotificacionEnviada WHERE idDefensa = ? AND idDelegado = ? AND tipo = ? LIMIT 1",
+      [idDefensa, idDelegado, "recordatorio_24h"],
+    );
+    const list = rows as Array<{ id: number }>;
+    return list.length > 0;
+  } catch (err) {
+    console.error("[notificacion] error checking sent status:", err);
+    return false;
+  }
+}
+
+export async function registrarRecordatorioEnviado(
+  idDefensa: number,
+  idDelegado: number,
+) {
+  const pool = getPool();
+  try {
+    await ensureNotificacionTableExists();
+    await pool.query(
+      `INSERT INTO NotificacionEnviada (idDefensa, idDelegado, tipo, fechaEnvio)
+       VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE fechaEnvio = VALUES(fechaEnvio)`,
+      [idDefensa, idDelegado, "recordatorio_24h"],
+    );
+  } catch (err) {
+    console.error("[notificacion] error registering sent notification:", err);
+  }
 }
 
 export async function getDefensasDelegado(idDelegado: string) {
@@ -225,7 +319,9 @@ export async function actualizarDefensa(
   },
 ) {
   const pool = getPool();
-  const estadoNorm = String(body.estado ?? "").toLowerCase().trim();
+  const estadoNorm = String(body.estado ?? "")
+    .toLowerCase()
+    .trim();
   const fechaSql = normalizarFechaMySQL(body.fecha);
 
   await pool.query(
@@ -290,7 +386,9 @@ export async function eliminarDefensa(id: string) {
       );
     }
 
-    await conn.query("DELETE FROM AsignacionDelegado WHERE idDefensa = ?", [id]);
+    await conn.query("DELETE FROM AsignacionDelegado WHERE idDefensa = ?", [
+      id,
+    ]);
 
     try {
       await conn.query("DELETE FROM Pago WHERE idDefensa = ?", [id]);

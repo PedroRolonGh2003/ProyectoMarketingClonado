@@ -73,7 +73,8 @@ export async function POST(
       return NextResponse.json(
         {
           ok: false,
-          mensaje: "No se puede enviar recordatorio porque la defensa fue cancelada.",
+          mensaje:
+            "No se puede enviar recordatorio porque la defensa fue cancelada.",
         },
         { status: 400 },
       );
@@ -118,10 +119,7 @@ export async function POST(
       ? "Error de configuración VAPID en el servidor. Revisa las variables en Vercel."
       : "No se pudo enviar el recordatorio. El delegado debe volver a activar notificaciones en su cuenta.";
 
-    return NextResponse.json(
-      { ok: false, mensaje, detalle },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, mensaje, detalle }, { status: 500 });
   } catch (error) {
     const mensaje =
       error instanceof Error ? error.message : "Error al enviar recordatorio";

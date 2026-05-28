@@ -22,7 +22,7 @@ import {
   delegadoEditarSchema,
   delegadoNuevoSchema,
 } from "@/lib/schemas";
-import "./Dashboard.css";
+import "@/components/dashboard/Dashboard.css";
 
 const API = "/api";
 
@@ -77,10 +77,7 @@ interface Pago {
   fecha: string;
 }
 
-function esPagoCompletado(
-  estado?: string | null,
-  fechaPago?: string | null,
-) {
+function esPagoCompletado(estado?: string | null, fechaPago?: string | null) {
   if (fechaPago) return true;
   if (!estado) return false;
   const e = String(estado).toLowerCase().trim();
@@ -302,7 +299,14 @@ const fFecha = (f: string) => {
   const mm = mo < 3 ? mo + 12 : mo;
   const k = yy % 100;
   const j = Math.floor(yy / 100);
-  const h = (d + Math.floor((13 * (mm + 1)) / 5) + k + Math.floor(k / 4) + Math.floor(j / 4) + 5 * j) % 7;
+  const h =
+    (d +
+      Math.floor((13 * (mm + 1)) / 5) +
+      k +
+      Math.floor(k / 4) +
+      Math.floor(j / 4) +
+      5 * j) %
+    7;
   // Zeller: 0=sábado, 1=domingo, ..., 6=viernes → mapear a domingo=0..sábado=6.
   const idxDia = (h + 6) % 7;
   return `${DIAS_ES[idxDia]}, ${d} de ${MESES_ES[mo - 1]} de ${y}`;
@@ -332,7 +336,12 @@ function estadoAdminDefensa(d: Defensa): string {
 
 function esEstadoFinalizado(estado: string) {
   const norm = String(estado).toLowerCase().trim();
-  return norm === "completada" || norm === "completado" || norm === "cancelada" || norm === "cancelado";
+  return (
+    norm === "completada" ||
+    norm === "completado" ||
+    norm === "cancelada" ||
+    norm === "cancelado"
+  );
 }
 
 function BadgeEstado({ estado }: { estado: string }) {
@@ -871,6 +880,19 @@ function VistaCompletadas({
   loading: boolean;
 }) {
   const lista = defensas.filter((d) => d.estadoAsignacion === "completada");
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mm = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mm.matches);
+    update();
+    mm.addEventListener?.("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      mm.removeEventListener?.("change", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
   return (
     <>
       <Topbar usuario={usuario} />
@@ -881,6 +903,40 @@ function VistaCompletadas({
         </div>
         {loading ? (
           <Spinner />
+        ) : lista.length === 0 ? (
+          <Vacio texto="Sin registros" />
+        ) : isMobile ? (
+          <div className="comp-cards">
+            {lista.map((d) => (
+              <div key={d.idDefensa} className="comp-card">
+                <div className="comp-card__head">
+                  <div>
+                    <div className="comp-card__student">
+                      {d.nombreEstudiante} {d.apellidoEstudiante}
+                    </div>
+                    <div className="comp-card__title">{d.titulo}</div>
+                  </div>
+                  <div className="comp-card__meta">
+                    <div className="comp-card__date">
+                      {fFechaCorta(d.fecha)}
+                    </div>
+                    {d.lugar && (
+                      <div className="comp-card__place">{d.lugar}</div>
+                    )}
+                  </div>
+                </div>
+                <div className="comp-card__footer">
+                  <span
+                    className={`badge ${esPagoCompletado(d.estadoPago) ? "badge--pagado" : "badge--pend-pago"}`}
+                  >
+                    {esPagoCompletado(d.estadoPago, null)
+                      ? "Completado"
+                      : "Pendiente"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -893,32 +949,24 @@ function VistaCompletadas({
                 </tr>
               </thead>
               <tbody>
-                {lista.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="td-empty">
-                      Sin registros
+                {lista.map((d) => (
+                  <tr key={d.idDefensa}>
+                    <td className="td-bold">
+                      {d.nombreEstudiante} {d.apellidoEstudiante}
+                    </td>
+                    <td className="td-truncate">{d.titulo}</td>
+                    <td>{fFechaCorta(d.fecha)}</td>
+                    <td>
+                      <span
+                        className={`badge ${esPagoCompletado(d.estadoPago) ? "badge--pagado" : "badge--pend-pago"}`}
+                      >
+                        {esPagoCompletado(d.estadoPago, null)
+                          ? "Completado"
+                          : "Pendiente"}
+                      </span>
                     </td>
                   </tr>
-                ) : (
-                  lista.map((d) => (
-                    <tr key={d.idDefensa}>
-                      <td className="td-bold">
-                        {d.nombreEstudiante} {d.apellidoEstudiante}
-                      </td>
-                      <td className="td-truncate">{d.titulo}</td>
-                      <td>{fFechaCorta(d.fecha)}</td>
-                      <td>
-                        <span
-                          className={`badge ${esPagoCompletado(d.estadoPago) ? "badge--pagado" : "badge--pend-pago"}`}
-                        >
-                          {esPagoCompletado(d.estadoPago, null)
-                            ? "Completado"
-                            : "Pendiente"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -1380,21 +1428,18 @@ function VistaAdminDefensas({
     setEditMsg("");
     try {
       const fechaUTC = localNaiveAISO(editForm.fecha);
-      const res = await fetch(
-        `${API}/admin/defensas/${editForm.idDefensa}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            titulo: editForm.titulo,
-            nombreEstudiante: editForm.nombreEstudiante,
-            apellidoEstudiante: editForm.apellidoEstudiante,
-            fecha: fechaUTC,
-            lugar: editForm.lugar,
-            estado: editForm.estado,
-          }),
-        },
-      );
+      const res = await fetch(`${API}/admin/defensas/${editForm.idDefensa}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: editForm.titulo,
+          nombreEstudiante: editForm.nombreEstudiante,
+          apellidoEstudiante: editForm.apellidoEstudiante,
+          fecha: fechaUTC,
+          lugar: editForm.lugar,
+          estado: editForm.estado,
+        }),
+      });
       const data = await res.json();
       if (data.ok) {
         setModalVer(null);
@@ -1417,21 +1462,18 @@ function VistaAdminDefensas({
     setEditMsg("");
     try {
       const fechaUTC = localNaiveAISO(editForm.fecha);
-      const res = await fetch(
-        `${API}/admin/defensas/${editForm.idDefensa}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            titulo: editForm.titulo,
-            nombreEstudiante: editForm.nombreEstudiante,
-            apellidoEstudiante: editForm.apellidoEstudiante,
-            fecha: fechaUTC,
-            lugar: editForm.lugar,
-            estado: "cancelada",
-          }),
-        },
-      );
+      const res = await fetch(`${API}/admin/defensas/${editForm.idDefensa}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: editForm.titulo,
+          nombreEstudiante: editForm.nombreEstudiante,
+          apellidoEstudiante: editForm.apellidoEstudiante,
+          fecha: fechaUTC,
+          lugar: editForm.lugar,
+          estado: "cancelada",
+        }),
+      });
       const data = await res.json();
       if (data.ok) {
         setModalVer(null);
@@ -1462,7 +1504,9 @@ function VistaAdminDefensas({
       if (data.ok) {
         alert(data.mensaje || "Recordatorio enviado");
       } else {
-        alert(data.mensaje || data.detalle || "No se pudo enviar el recordatorio");
+        alert(
+          data.mensaje || data.detalle || "No se pudo enviar el recordatorio",
+        );
       }
     } catch {
       alert("Sin conexión");
@@ -1687,7 +1731,13 @@ function VistaAdminDefensas({
             )}
             <div className="mb-12" />
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+              }}
+            >
               <div>
                 <label className="form__label">Nombre estudiante</label>
                 <input
@@ -2573,7 +2623,9 @@ function VistaAdminPagos() {
         setError(data.mensaje || "No se pudo confirmar el pago");
         return;
       }
-      setMensaje("Pago confirmado. El delegado verá el estado como Completado.");
+      setMensaje(
+        "Pago confirmado. El delegado verá el estado como Completado.",
+      );
       cargar();
     } catch {
       setError("Sin conexión al confirmar el pago");
@@ -2601,7 +2653,9 @@ function VistaAdminPagos() {
       {error && !loading && <p className="form__error mb-16">{error}</p>}
 
       <div className="admin-panel">
-        <h3 className="page-title mb-16">Pagos por confirmar ({pendientes.length})</h3>
+        <h3 className="page-title mb-16">
+          Pagos por confirmar ({pendientes.length})
+        </h3>
         {loading ? (
           <Spinner />
         ) : (
@@ -2669,7 +2723,6 @@ function VistaAdminPagos() {
           </div>
         )}
       </div>
-
     </>
   );
 }

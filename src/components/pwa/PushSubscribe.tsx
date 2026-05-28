@@ -75,7 +75,9 @@ export default function PushSubscribe({ usuarioId }: PushSubscribeProps) {
           setStatus(data.activo ? "subscribed" : "idle");
         } else {
           setStatus("idle");
-          setMessage(data.mensaje || "No se pudo consultar el estado de notificaciones.");
+          setMessage(
+            data.mensaje || "No se pudo consultar el estado de notificaciones.",
+          );
         }
       } catch (error) {
         const mensaje =
@@ -127,7 +129,11 @@ export default function PushSubscribe({ usuarioId }: PushSubscribeProps) {
       }
 
       const subscriptionBody = toPushSubscriptionBody(subscription);
-      if (!subscriptionBody.endpoint || !subscriptionBody.keys.p256dh || !subscriptionBody.keys.auth) {
+      if (
+        !subscriptionBody.endpoint ||
+        !subscriptionBody.keys.p256dh ||
+        !subscriptionBody.keys.auth
+      ) {
         throw new Error("No se pudo obtener la suscripción de push.");
       }
 
@@ -143,7 +149,9 @@ export default function PushSubscribe({ usuarioId }: PushSubscribeProps) {
 
       setActivo(true);
       setStatus("subscribed");
-      setMessage("Notificaciones activadas. Recibirás recordatorios de defensas pendientes.");
+      setMessage(
+        "Notificaciones activadas. Recibirás recordatorios de defensas pendientes.",
+      );
     } catch (error: unknown) {
       const mensaje =
         error instanceof Error
@@ -180,7 +188,9 @@ export default function PushSubscribe({ usuarioId }: PushSubscribeProps) {
       });
       const result = (await res.json()) as PushSubscriptionResponse;
       if (!result.ok) {
-        throw new Error(result.mensaje || "No se pudo desactivar la suscripción.");
+        throw new Error(
+          result.mensaje || "No se pudo desactivar la suscripción.",
+        );
       }
 
       setActivo(false);
@@ -219,7 +229,9 @@ export default function PushSubscribe({ usuarioId }: PushSubscribeProps) {
               onClick={handleUnsubscribe}
               disabled={status === "loading"}
             >
-              {status === "loading" ? "Desactivando..." : "Desactivar notificaciones"}
+              {status === "loading"
+                ? "Desactivando..."
+                : "Desactivar notificaciones"}
             </button>
           ) : (
             <button
