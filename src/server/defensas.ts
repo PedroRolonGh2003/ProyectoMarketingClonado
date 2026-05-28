@@ -1,6 +1,9 @@
 import type { ResultSetHeader } from "mysql2";
 import { getPool } from "@/lib/db";
-import { normalizarFechaMySQL } from "@/lib/defensa-form";
+import {
+  normalizarFechaMySQL,
+  validarFechaHoraDefensa,
+} from "@/lib/defensa-form";
 
 type RecordatorioDefensaInfo = {
   idDelegado: number | null;
@@ -325,6 +328,18 @@ export async function crearDefensa(body: {
     direccion = null,
     observaciones = null,
   } = body;
+
+  if (!fecha) {
+    throw new BusinessError(
+      "La fecha y hora de la defensa no pueden ser anteriores a la fecha y hora actual.",
+    );
+  }
+
+  const fechaError = validarFechaHoraDefensa(fecha);
+  if (fechaError) {
+    throw new BusinessError(fechaError);
+  }
+
   const pool = getPool();
   const [estResult] = await pool.query(
     "INSERT INTO Estudiante (nombre, apellido) VALUES (?, ?)",
@@ -375,6 +390,12 @@ export async function actualizarDefensa(
   const estadoNorm = String(body.estado ?? "")
     .toLowerCase()
     .trim();
+
+  const fechaError = validarFechaHoraDefensa(body.fecha);
+  if (fechaError) {
+    throw new BusinessError(fechaError);
+  }
+
   const fechaSql = normalizarFechaMySQL(body.fecha);
 
   await pool.query(

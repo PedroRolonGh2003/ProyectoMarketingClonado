@@ -16,6 +16,7 @@ import {
   isoALocalNaive,
   localNaiveAISO,
   parseNombreEstudiante,
+  validarFechaHoraDefensa,
 } from "@/lib/defensa-form";
 import {
   defensaEditarSchema,
@@ -1348,6 +1349,7 @@ function VistaAdminDefensas({
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroDelegado, setFiltro] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("");
   const [modalAsignar, setModalAsignar] = useState<Defensa | null>(null);
   const [modalVer, setModalVer] = useState<Defensa | null>(null);
   const [editForm, setEditForm] = useState<Defensa | null>(null);
@@ -1370,7 +1372,27 @@ function VistaAdminDefensas({
     const matchDel =
       !filtroDelegado ||
       `${d.nombreDelegado} ${d.apellidoDelegado}`.includes(filtroDelegado);
-    return matchBusq && matchDel;
+    const estado = estadoAdminDefensa(d).toLowerCase();
+    const matchEstado =
+      !filtroEstado ||
+      (filtroEstado === "pendientes"
+        ? ![
+            "completada",
+            "completado",
+            "rechazada",
+            "cancelada",
+            "sin asignar",
+          ].includes(estado)
+        : filtroEstado === "completadas"
+          ? ["completada", "completado"].includes(estado)
+          : filtroEstado === "rechazadas"
+            ? estado === "rechazada"
+            : filtroEstado === "canceladas"
+              ? estado === "cancelada"
+              : filtroEstado === "sin asignar"
+                ? estado === "sin asignar"
+                : true);
+    return matchBusq && matchDel && matchEstado;
   });
 
   const delegadosFiltrados = delegados.filter((d) =>
@@ -1424,6 +1446,12 @@ function VistaAdminDefensas({
   const handleGuardarEdicion = async () => {
     if (!editForm) return;
 
+    const fechaError = validarFechaHoraDefensa(editForm.fecha);
+    if (fechaError) {
+      setEditMsg(fechaError);
+      return;
+    }
+
     const parsed = defensaEditarSchema.safeParse({
       titulo: editForm.titulo,
       nombreEstudiante: editForm.nombreEstudiante,
@@ -1472,6 +1500,14 @@ function VistaAdminDefensas({
       setEditLoading(false);
     }
   };
+
+  const minFechaHoraActual = (() => {
+    const ahora = new Date();
+    const pad = (value: number) => value.toString().padStart(2, "0");
+    return `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-${pad(
+      ahora.getDate(),
+    )}T${pad(ahora.getHours())}:${pad(ahora.getMinutes())}`;
+  })();
 
   const handleCancelarDefensa = async () => {
     if (!editForm) return;
@@ -1580,6 +1616,19 @@ function VistaAdminDefensas({
                 {d.nombre} {d.apellido}
               </option>
             ))}
+          </select>
+          <select
+            className="form__input filtro-select"
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value)}
+            aria-label="Filtrar por estado"
+          >
+            <option value="">Todas</option>
+            <option value="pendientes">Pendientes</option>
+            <option value="completadas">Completadas</option>
+            <option value="rechazadas">Rechazadas</option>
+            <option value="canceladas">Canceladas</option>
+            <option value="sin asignar">Sin asignar</option>
           </select>
           <button
             className="btn-outline"
@@ -1837,6 +1886,7 @@ function VistaAdminDefensas({
             <input
               className="form__input"
               type="datetime-local"
+              min={minFechaHoraActual}
               value={editForm.fecha || ""}
               disabled={esDefensaCompletada(editForm)}
               readOnly={esDefensaCompletada(editForm)}
@@ -2044,6 +2094,11 @@ function VistaAdminCrearDefensa({
   });
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
+  const fechaMinima = (() => {
+    const now = new Date();
+    const pad = (value: number) => value.toString().padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  })();
   const set =
     (k: string) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -2073,6 +2128,12 @@ function VistaAdminCrearDefensa({
       const iso = buildFechaHoraISO(form.fecha, form.hora);
       if (!iso) {
         setMsg("Fecha u hora inválida. Revisa los campos de fecha y hora.");
+        return;
+      }
+
+      const fechaError = validarFechaHoraDefensa(iso);
+      if (fechaError) {
+        setMsg(fechaError);
         return;
       }
 
@@ -2156,6 +2217,7 @@ function VistaAdminCrearDefensa({
                 className="form__input"
                 title="Fecha"
                 aria-label="Fecha"
+                min={fechaMinima}
                 value={form.fecha}
                 onChange={set("fecha")}
                 required

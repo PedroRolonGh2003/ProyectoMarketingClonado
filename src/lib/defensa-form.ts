@@ -64,6 +64,34 @@ export function localNaiveAISO(local: string | null | undefined): string {
   return `${m[1]}T${m[2]}:${m[3] ?? "00"}.000Z`;
 }
 
+const FECHA_HORA_LOCAL_REGEX =
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?Z?$/;
+
+export function esFechaHoraPasada(fechaHora: string): boolean {
+  const m = String(fechaHora).trim().match(FECHA_HORA_LOCAL_REGEX);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = Number(m[6] ?? "0");
+  const fecha = new Date(year, month, day, hour, minute, second);
+  return fecha.getTime() < Date.now();
+}
+
+export function validarFechaHoraDefensa(fechaHora: string): string | null {
+  const value = String(fechaHora ?? "").trim();
+  if (!value) return "Fecha u hora inválida";
+  if (!FECHA_HORA_LOCAL_REGEX.test(value)) {
+    return "Fecha u hora inválida";
+  }
+  if (esFechaHoraPasada(value)) {
+    return "La fecha y hora de la defensa no pueden ser anteriores a la fecha y hora actual.";
+  }
+  return null;
+}
+
 /** Acepta ISO con Z, datetime-local o ya-MySQL; devuelve "YYYY-MM-DD HH:MM:SS". */
 export function normalizarFechaMySQL(
   fecha: string | null | undefined,

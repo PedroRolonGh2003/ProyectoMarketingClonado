@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import {
   buildFechaHoraISO,
   parseEstudianteDesdeBody,
+  validarFechaHoraDefensa,
 } from "@/lib/defensa-form";
-import { crearDefensa, getDefensasLista } from "@/server/defensas";
+import {
+  BusinessError,
+  crearDefensa,
+  getDefensasLista,
+} from "@/server/defensas";
 
 export const runtime = "nodejs";
 
@@ -42,15 +47,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const fecha =
-      fechaStr.includes(" ")
-        ? fechaStr
-        : buildFechaHoraISO(fechaStr, horaStr) ??
-          (body.fecha ? String(body.fecha).trim() : null);
+    const fecha = fechaStr.includes(" ")
+      ? fechaStr
+      : (buildFechaHoraISO(fechaStr, horaStr) ??
+        (body.fecha ? String(body.fecha).trim() : null));
 
     if (!fecha) {
       return NextResponse.json(
         { ok: false, mensaje: "Fecha u hora inválida" },
+        { status: 400 },
+      );
+    }
+
+    const fechaError = validarFechaHoraDefensa(fecha);
+    if (fechaError) {
+      return NextResponse.json(
+        { ok: false, mensaje: fechaError },
         { status: 400 },
       );
     }
@@ -69,6 +81,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error";
-    return NextResponse.json({ ok: false, mensaje: message }, { status: 500 });
+    const status = err instanceof BusinessError ? 400 : 500;
+    return NextResponse.json({ ok: false, mensaje: message }, { status });
   }
 }
