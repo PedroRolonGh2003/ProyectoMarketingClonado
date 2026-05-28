@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { actualizarDefensa } from "@/server/defensas";
+import { actualizarDefensa, BusinessError } from "@/server/defensas";
 
 export const runtime = "nodejs";
 
@@ -12,6 +12,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error";
-    return NextResponse.json({ ok: false, mensaje: message }, { status: 500 });
+    const status = err instanceof BusinessError ? 400 : 500;
+    return NextResponse.json({ ok: false, mensaje: message }, { status });
   }
 }

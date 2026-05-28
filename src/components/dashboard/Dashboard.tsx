@@ -52,6 +52,7 @@ interface Defensa {
   apellidoDelegado?: string;
   idDelegado?: number;
   motivoRechazo?: string | null;
+  tieneEvidencia?: boolean;
 }
 
 interface Delegado {
@@ -342,6 +343,22 @@ function esEstadoFinalizado(estado: string) {
     norm === "completado" ||
     norm === "cancelada" ||
     norm === "cancelado"
+  );
+}
+
+function esDefensaCompletada(d: Defensa) {
+  const estado = String(d.estado ?? "")
+    .toLowerCase()
+    .trim();
+  const estadoAsignacion = String(d.estadoAsignacion ?? "")
+    .toLowerCase()
+    .trim();
+  return (
+    estado === "completada" ||
+    estado === "completado" ||
+    estadoAsignacion === "completada" ||
+    estadoAsignacion === "completado" ||
+    Boolean(d.tieneEvidencia)
   );
 }
 
@@ -1380,7 +1397,7 @@ function VistaAdminDefensas({
         setDelegadoSel(null);
         setBusqDelegado("");
         await onRecargar();
-      } else setMsgAsignar(data.error || "Error al asignar");
+      } else setMsgAsignar(data.mensaje || data.error || "Error al asignar");
     } catch {
       setMsgAsignar("Sin conexión");
     }
@@ -1656,8 +1673,15 @@ function VistaAdminDefensas({
                       <td>
                         <div className="acciones-row">
                           <button
-                            className="btn-primary btn-sm"
+                            className={`btn-primary btn-sm ${esDefensaCompletada(d) ? "btn-disabled" : ""}`}
+                            disabled={esDefensaCompletada(d)}
+                            title={
+                              esDefensaCompletada(d)
+                                ? "No se puede reasignar una defensa completada"
+                                : "Asignar"
+                            }
                             onClick={() => {
+                              if (esDefensaCompletada(d)) return;
                               setModalAsignar(d);
                               setBusqDelegado("");
                               setDelegadoSel(null);
@@ -1687,7 +1711,9 @@ function VistaAdminDefensas({
                           )}
                           <button
                             className="btn-icon"
-                            title="Ver / Editar"
+                            title={
+                              esDefensaCompletada(d) ? "Ver" : "Ver / Editar"
+                            }
                             onClick={() => {
                               setModalVer(d);
                               setEditForm({
@@ -1713,8 +1739,14 @@ function VistaAdminDefensas({
 
       {modalVer && editForm && (
         <Modal
-          title="Detalle de defensa"
-          subtitle=""
+          title={
+            esDefensaCompletada(editForm) ? "Ver defensa" : "Detalle de defensa"
+          }
+          subtitle={
+            esDefensaCompletada(editForm)
+              ? "Esta defensa ya fue completada y no puede ser editada."
+              : undefined
+          }
           onClose={() => {
             setModalVer(null);
             setEditForm(null);
@@ -1726,7 +1758,10 @@ function VistaAdminDefensas({
             <input
               className="form__input"
               value={editForm.titulo}
+              disabled={esDefensaCompletada(editForm)}
+              readOnly={esDefensaCompletada(editForm)}
               onChange={(e) => {
+                if (esDefensaCompletada(editForm)) return;
                 setEditForm({ ...editForm, titulo: e.target.value });
                 if (editFieldErrors.titulo)
                   setEditFieldErrors({ ...editFieldErrors, titulo: "" });
@@ -1749,7 +1784,10 @@ function VistaAdminDefensas({
                 <input
                   className="form__input"
                   value={editForm.nombreEstudiante}
+                  disabled={esDefensaCompletada(editForm)}
+                  readOnly={esDefensaCompletada(editForm)}
                   onChange={(e) => {
+                    if (esDefensaCompletada(editForm)) return;
                     setEditForm({
                       ...editForm,
                       nombreEstudiante: e.target.value,
@@ -1772,7 +1810,10 @@ function VistaAdminDefensas({
                 <input
                   className="form__input"
                   value={editForm.apellidoEstudiante}
+                  disabled={esDefensaCompletada(editForm)}
+                  readOnly={esDefensaCompletada(editForm)}
                   onChange={(e) => {
+                    if (esDefensaCompletada(editForm)) return;
                     setEditForm({
                       ...editForm,
                       apellidoEstudiante: e.target.value,
@@ -1797,7 +1838,10 @@ function VistaAdminDefensas({
               className="form__input"
               type="datetime-local"
               value={editForm.fecha || ""}
+              disabled={esDefensaCompletada(editForm)}
+              readOnly={esDefensaCompletada(editForm)}
               onChange={(e) => {
+                if (esDefensaCompletada(editForm)) return;
                 setEditForm({ ...editForm, fecha: e.target.value });
                 if (editFieldErrors.fecha)
                   setEditFieldErrors({ ...editFieldErrors, fecha: "" });
@@ -1812,7 +1856,10 @@ function VistaAdminDefensas({
             <input
               className="form__input"
               value={editForm.lugar}
+              disabled={esDefensaCompletada(editForm)}
+              readOnly={esDefensaCompletada(editForm)}
               onChange={(e) => {
+                if (esDefensaCompletada(editForm)) return;
                 setEditForm({ ...editForm, lugar: e.target.value });
                 if (editFieldErrors.lugar)
                   setEditFieldErrors({ ...editFieldErrors, lugar: "" });
@@ -1829,10 +1876,12 @@ function VistaAdminDefensas({
             </div>
             {(() => {
               const estadoVisible = estadoAdminDefensa(editForm).toLowerCase();
+              const estaCompletada = esDefensaCompletada(editForm);
               const yaFinalizada =
                 estadoVisible === "cancelada" ||
                 estadoVisible === "completada" ||
                 estadoVisible === "completado";
+              if (estaCompletada) return null;
               return yaFinalizada ? null : (
                 <button
                   type="button"
@@ -1851,6 +1900,20 @@ function VistaAdminDefensas({
               </p>
             )}
 
+            {editForm.idAsignacion && (
+              <button
+                type="button"
+                className="btn-outline btn-sm mb-12"
+                onClick={() =>
+                  router.push(
+                    `/admin/defensas/${editForm.idDefensa}/evidencias`,
+                  )
+                }
+              >
+                Ver evidencias
+              </button>
+            )}
+
             {estadoAdminDefensa(editForm).toLowerCase() === "rechazada" && (
               <div className="detail-section mt-14">
                 <h4 className="detail-section__title">Motivo de rechazo</h4>
@@ -1865,6 +1928,11 @@ function VistaAdminDefensas({
             )}
 
             {editMsg && <p className="form__error mt-8">{editMsg}</p>}
+            {esDefensaCompletada(editForm) && (
+              <p className="form__info mt-8">
+                Esta defensa ya fue completada y no puede ser editada.
+              </p>
+            )}
           </div>
           <div className="modal__footer">
             <button
@@ -1875,15 +1943,17 @@ function VistaAdminDefensas({
                 setEditFieldErrors({});
               }}
             >
-              Cancelar
+              {esDefensaCompletada(editForm) ? "Cerrar" : "Cancelar"}
             </button>
-            <button
-              className="btn-primary"
-              disabled={editLoading}
-              onClick={handleGuardarEdicion}
-            >
-              {editLoading ? "Guardando…" : "Guardar cambios"}
-            </button>
+            {!esDefensaCompletada(editForm) && (
+              <button
+                className="btn-primary"
+                disabled={editLoading}
+                onClick={handleGuardarEdicion}
+              >
+                {editLoading ? "Guardando…" : "Guardar cambios"}
+              </button>
+            )}
           </div>
         </Modal>
       )}

@@ -410,6 +410,19 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
 }
+.btn-disabled,
+.btn-primary.btn-disabled,
+.btn-outline.btn-disabled,
+.btn-danger.btn-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.form__input:disabled,
+.form__input[readonly] {
+  background: #f3f4f7;
+  color: var(--text);
+  cursor: not-allowed;
+}
 .btn-primary--full {
   width: 100%;
   justify-content: center;

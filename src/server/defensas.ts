@@ -9,6 +9,8 @@ type RecordatorioDefensaInfo = {
   tieneEvidencia: boolean;
 };
 
+export class BusinessError extends Error {}
+
 const estadoEsCompletado = (estado: string | null | undefined) => {
   return ["completada", "completado"].includes(
     String(estado ?? "")
@@ -71,6 +73,13 @@ export function defensaYaEstaCompletada(info: RecordatorioDefensaInfo) {
     estadoEsCompletado(info.estadoAsignacion) ||
     info.tieneEvidencia
   );
+}
+
+export async function defensaEstaCompletada(
+  idDefensa: string | number,
+): Promise<boolean> {
+  const info = await getDefensaParaRecordatorio(idDefensa);
+  return info ? defensaYaEstaCompletada(info) : false;
 }
 
 export function defensaEstaCancelada(info: RecordatorioDefensaInfo) {
@@ -259,7 +268,8 @@ export async function getAdminDefensaPorId(idDefensa: string | number) {
        ad.idAsignacion, ad.estado AS estadoAsignacion,
        u.nombre AS nombreDelegado, u.apellido AS apellidoDelegado,
        u.idUsuario AS idDelegado
-       ${selectReason}
+       ${selectReason},
+       EXISTS(SELECT 1 FROM Evidencia e2 WHERE e2.idAsignacion = ad.idAsignacion) AS tieneEvidencia
      FROM Defensa d
      JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
      JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
@@ -285,7 +295,8 @@ export async function getAdminDefensas() {
        ad.idAsignacion, ad.estado AS estadoAsignacion,
        u.nombre AS nombreDelegado, u.apellido AS apellidoDelegado,
        u.idUsuario AS idDelegado
-       ${selectReason}
+       ${selectReason},
+       EXISTS(SELECT 1 FROM Evidencia e2 WHERE e2.idAsignacion = ad.idAsignacion) AS tieneEvidencia
      FROM Defensa d
      JOIN PerfilTesis pt ON d.idPerfil = pt.idPerfil
      JOIN Estudiante e ON pt.idEstudiante = e.idEstudiante
@@ -357,6 +368,10 @@ export async function actualizarDefensa(
   },
 ) {
   const pool = getPool();
+  if (await defensaEstaCompletada(id)) {
+    throw new BusinessError("No se puede editar una defensa completada.");
+  }
+
   const estadoNorm = String(body.estado ?? "")
     .toLowerCase()
     .trim();
@@ -456,6 +471,10 @@ export async function eliminarDefensa(id: string) {
 }
 
 export async function asignarDelegado(idDefensa: string, idDelegado: number) {
+  if (await defensaEstaCompletada(idDefensa)) {
+    throw new BusinessError("No se puede reasignar una defensa completada.");
+  }
+
   const pool = getPool();
   const [existing] = await pool.query(
     "SELECT idAsignacion FROM AsignacionDelegado WHERE idDefensa = ?",
