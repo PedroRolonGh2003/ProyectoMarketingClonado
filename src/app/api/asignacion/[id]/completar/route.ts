@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { subirArchivo } from "@/lib/cloudinary";
 import { completarAsignacion, type EvidenciaPayload } from "@/server/asignacion";
 
 type Ctx = { params: { id: string } };
@@ -26,28 +26,25 @@ export async function PUT(request: Request, context: Ctx) {
 
       if (imagen instanceof File && imagen.size > 0) {
         imagenNombre = imagen.name || "evidencia.jpg";
-        const blob = await put(
-          `evidencias/asignacion-${id}/imagen-${Date.now()}-${imagenNombre}`.replace(
-            /\s+/g,
-            "-",
-          ),
-          imagen,
-          { access: "public", contentType: imagen.type || "application/octet-stream" },
-        );
-        imagenUrl = blob.url;
+        const buffer = Buffer.from(await imagen.arrayBuffer());
+        imagenUrl = await subirArchivo(buffer, {
+          folder: `evidencias/asignacion-${id}`,
+          public_id: `imagen-${Date.now()}`,
+          resource_type: "image",
+          overwrite: true,
+        });
       }
 
       if (pdf instanceof File && pdf.size > 0) {
         pdfNombre = pdf.name || "evidencia.pdf";
-        const blob = await put(
-          `evidencias/asignacion-${id}/pdf-${Date.now()}-${pdfNombre}`.replace(
-            /\s+/g,
-            "-",
-          ),
-          pdf,
-          { access: "public", contentType: pdf.type || "application/pdf" },
-        );
-        pdfUrl = blob.url;
+        const buffer = Buffer.from(await pdf.arrayBuffer());
+        pdfUrl = await subirArchivo(buffer, {
+          folder: `evidencias/asignacion-${id}`,
+          public_id: `pdf-${Date.now()}`,
+          resource_type: "raw",
+          format: "pdf",
+          overwrite: true,
+        });
       }
 
       evidencia = { comentarios, imagenUrl, pdfUrl, imagenNombre, pdfNombre };
