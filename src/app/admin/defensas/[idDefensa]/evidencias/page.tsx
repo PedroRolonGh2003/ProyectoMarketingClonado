@@ -267,8 +267,7 @@ export default function AdminEvidenciasPage() {
         )}
 
         {evidencias.map((e, idx) => {
-          const comentariosTexto =
-            e.comentarios?.trim() || e.urlArchivo?.trim() || null;
+          const comentariosTexto = e.comentarios?.trim() || null;
           return (
             <section
               key={`${e.idAsignacion}-${idx}`}
