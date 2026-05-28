@@ -36,15 +36,21 @@ async function getAsignacionDelegadoReasonField(): Promise<string | null> {
   return cachedAsignacionDelegadoReasonField;
 }
 
+export type EvidenciaPayload = {
+  comentarios?: string | null;
+  imagenUrl?: string | null;
+  pdfUrl?: string | null;
+  imagenNombre?: string | null;
+  pdfNombre?: string | null;
+};
+
 export async function actualizarEstadoAsignacion(
   id: string,
   estado: string,
   _justificacion?: string,
 ) {
   const pool = getPool();
-  const estadoNorm = String(estado ?? "")
-    .toLowerCase()
-    .trim();
+  const estadoNorm = String(estado ?? "").toLowerCase().trim();
   const justificacion = String(_justificacion ?? "").trim();
 
   if (estadoNorm === "rechazada") {
@@ -68,119 +74,64 @@ export async function actualizarEstadoAsignacion(
     );
   }
 
-  await pool.query(
-    "UPDATE AsignacionDelegado SET estado = ? WHERE idAsignacion = ?",
-    [estadoNorm, id],
-  );
-}
-
-const MAX_IMAGEN_BYTES = 5 * 1024 * 1024;
-const MAX_PDF_BYTES = 10 * 1024 * 1024;
-
-async function guardarEvidenciaEnBD(
-  file: File,
-  tipo: "imagen" | "pdf",
-): Promise<string> {
-  const maxBytes = tipo === "imagen" ? MAX_IMAGEN_BYTES : MAX_PDF_BYTES;
-  const maxMB = tipo === "imagen" ? 5 : 10;
-
-  if (file.size > maxBytes) {
-    throw new Error(`El ${tipo} supera el tamaño máximo (${maxMB} MB)`);
-  }
-
-  const mime = file.type;
-  if (tipo === "imagen" && !mime.startsWith("image/")) {
-    throw new Error("El archivo de imagen debe ser una imagen válida");
-  }
-  if (tipo === "pdf" && mime !== "application/pdf") {
-    throw new Error("El archivo PDF debe ser un PDF válido");
-  }
-
-  return `${tipo}: ${file.name} (${mime}, ${file.size} bytes)`;
+  await pool.query("UPDATE AsignacionDelegado SET estado = ? WHERE idAsignacion = ?", [
+    estadoNorm,
+    id,
+  ]);
 }
 
 export async function completarAsignacion(
   id: string,
-  evidencia: {
-    imagen?: File | null;
-    pdf?: File | null;
-    comentarios?: string | null;
-  } = {},
+  evidencia?: EvidenciaPayload | null,
 ) {
   const pool = getPool();
-  const [rows] = await pool.query(
-    "SELECT idDefensa FROM AsignacionDelegado WHERE idAsignacion = ?",
-    [id],
-  );
-  const list = rows as { idDefensa: number }[];
-  if (list.length === 0) throw new Error("Asignación no encontrada");
-  const idDefensa = list[0].idDefensa;
-
-  const imagenesInfo: string[] = [];
-
-  if (evidencia.imagen && evidencia.imagen.size > 0) {
-    const info = await guardarEvidenciaEnBD(evidencia.imagen, "imagen");
-    imagenesInfo.push(info);
-  }
-
-  if (evidencia.pdf && evidencia.pdf.size > 0) {
-    const info = await guardarEvidenciaEnBD(evidencia.pdf, "pdf");
-    imagenesInfo.push(info);
-  }
 
   await pool.query(
     "UPDATE AsignacionDelegado SET estado = 'completada' WHERE idAsignacion = ?",
     [id],
   );
-  await pool.query(
-    "UPDATE Defensa SET estado = 'completada' WHERE idDefensa = ?",
-    [idDefensa],
-  );
 
-  const comentarios = evidencia.comentarios?.trim() || null;
-  const archivosDesc =
-    imagenesInfo.length > 0 ? imagenesInfo.join(" | ") : null;
-  const urlImagen = imagenesInfo.length > 0 ? "evidencia-recibida" : null;
-
-  if (archivosDesc || comentarios) {
-    await pool.query(
-      `INSERT INTO Evidencia (idAsignacion, urlImagen, comentarios, fechaSubida)
-       VALUES (?, ?, ?, UTC_TIMESTAMP())`,
-      [
-        id,
-        urlImagen,
-        `${archivosDesc ? archivosDesc + " | " : ""}${comentarios || ""}`.trim(),
-      ],
-    );
-  }
-
-  try {
-    await crearPagoPendientePorDefensa(idDefensa);
-  } catch (err) {
-    console.error(
-      "[pagos] al completar defensa:",
-      err instanceof Error ? err.message : err,
-    );
-  }
-}
-
-export async function getEvidenciasDefensa(idDefensa: string | number) {
-  const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT
-       e.idAsignacion,
-       e.urlImagen,
-       e.comentarios,
-       DATE_FORMAT(e.fechaSubida, '%Y-%m-%dT%H:%i:%sZ') AS fechaSubida,
-       ad.idDelegado,
-       u.nombre   AS nombreDelegado,
-       u.apellido AS apellidoDelegado
-     FROM Evidencia e
-     JOIN AsignacionDelegado ad ON e.idAsignacion = ad.idAsignacion
-     LEFT JOIN Usuario u ON ad.idDelegado = u.idUsuario
-     WHERE ad.idDefensa = ?
-     ORDER BY e.fechaSubida DESC`,
-    [idDefensa],
+    "SELECT idDefensa FROM AsignacionDelegado WHERE idAsignacion = ?",
+    [id],
   );
-  return rows;
+
+  const list = rows as { idDefensa: number }[];
+
+  if (list.length > 0) {
+    const idDefensa = list[0].idDefensa;
+    await pool.query("UPDATE Defensa SET estado = 'completada' WHERE idDefensa = ?", [
+      idDefensa,
+    ]);
+
+    try {
+      await crearPagoPendientePorDefensa(idDefensa);
+    } catch (err) {
+      console.error(
+        "[pagos] al completar defensa:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    const comentarios = evidencia?.comentarios?.trim() || "";
+    const imagenUrl = evidencia?.imagenUrl || null;
+    const pdfUrl = evidencia?.pdfUrl || null;
+    const imagenNombre = evidencia?.imagenNombre || null;
+    const pdfNombre = evidencia?.pdfNombre || null;
+
+    if (comentarios || imagenUrl || pdfUrl) {
+      const payload = JSON.stringify({
+        comentarios: comentarios || null,
+        imagenUrl,
+        pdfUrl,
+        imagenNombre,
+        pdfNombre,
+      });
+
+      await pool.query("INSERT INTO Evidencia (idAsignacion, urlArchivo) VALUES (?, ?)", [
+        id,
+        payload,
+      ]);
+    }
+  }
 }

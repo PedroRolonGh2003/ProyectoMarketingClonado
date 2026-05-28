@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { completarAsignacion } from "@/server/asignacion";
+import { put } from "@vercel/blob";
+import { completarAsignacion, type EvidenciaPayload } from "@/server/asignacion";
 
 type Ctx = { params: { id: string } };
 
@@ -8,22 +9,56 @@ export const runtime = "nodejs";
 export async function PUT(request: Request, context: Ctx) {
   try {
     const { id } = context.params;
-    const contentType = request.headers.get("content-type") ?? "";
+    const contentType = request.headers.get("content-type") || "";
+
+    let evidencia: EvidenciaPayload | null = null;
 
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
+      const comentarios = String(form.get("comentarios") ?? "").trim();
       const imagen = form.get("imagen");
       const pdf = form.get("pdf");
-      const comentarios = form.get("comentarios");
-      await completarAsignacion(id, {
-        imagen: imagen instanceof File ? imagen : null,
-        pdf: pdf instanceof File ? pdf : null,
-        comentarios: typeof comentarios === "string" ? comentarios : null,
-      });
+
+      let imagenUrl: string | null = null;
+      let pdfUrl: string | null = null;
+      let imagenNombre: string | null = null;
+      let pdfNombre: string | null = null;
+
+      if (imagen instanceof File && imagen.size > 0) {
+        imagenNombre = imagen.name || "evidencia.jpg";
+        const blob = await put(
+          `evidencias/asignacion-${id}/imagen-${Date.now()}-${imagenNombre}`.replace(
+            /\s+/g,
+            "-",
+          ),
+          imagen,
+          { access: "public", contentType: imagen.type || "application/octet-stream" },
+        );
+        imagenUrl = blob.url;
+      }
+
+      if (pdf instanceof File && pdf.size > 0) {
+        pdfNombre = pdf.name || "evidencia.pdf";
+        const blob = await put(
+          `evidencias/asignacion-${id}/pdf-${Date.now()}-${pdfNombre}`.replace(
+            /\s+/g,
+            "-",
+          ),
+          pdf,
+          { access: "public", contentType: pdf.type || "application/pdf" },
+        );
+        pdfUrl = blob.url;
+      }
+
+      evidencia = { comentarios, imagenUrl, pdfUrl, imagenNombre, pdfNombre };
     } else {
-      const body = await request.json().catch(() => ({}));
-      await completarAsignacion(id, { comentarios: body?.comentarios ?? null });
+      // Compatibilidad con el cliente antiguo (solo comentarios).
+      const body = await request.json();
+      const comentarios = String(body?.comentarios ?? "").trim();
+      evidencia = { comentarios };
     }
+
+    await completarAsignacion(id, evidencia);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error";

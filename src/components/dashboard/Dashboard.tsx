@@ -1775,6 +1775,14 @@ function VistaAdminDefensas({
                           >
                             <Ico d={icons.eye} size={16} />
                           </button>
+                          <button
+                            className="btn-outline btn-sm"
+                            onClick={() =>
+                              router.push(`/admin/defensas/${d.idDefensa}/evidencias`)
+                            }
+                          >
+                            Evidencias
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -3089,16 +3097,14 @@ export default function Dashboard() {
     comentarios?: string;
   }) => {
     const form = new FormData();
-    if (imagen) form.append("imagen", imagen);
-    if (pdf) form.append("pdf", pdf);
-    form.append("comentarios", comentarios ?? "");
-    const res = await fetch(
-      `${API}/asignacion/${defensa.idAsignacion}/completar`,
-      {
-        method: "PUT",
-        body: form,
-      },
-    );
+    form.set("comentarios", comentarios || "");
+    if (imagen) form.set("imagen", imagen);
+    if (pdf) form.set("pdf", pdf);
+
+    const res = await fetch(`${API}/asignacion/${defensa.idAsignacion}/completar`, {
+      method: "PUT",
+      body: form,
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
       alert(data.mensaje || "Error al completar la defensa");
