@@ -1,5 +1,3 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { getPool } from "@/lib/db";
 import { crearPagoPendientePorDefensa } from "@/server/pagos";
 
@@ -79,25 +77,32 @@ export async function actualizarEstadoAsignacion(
 const MAX_IMAGEN_BYTES = 5 * 1024 * 1024;
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
-async function guardarArchivo(
+async function guardarEvidenciaEnBD(
   file: File,
   idAsignacion: string,
-  prefijo: string,
-  extForzada?: string,
-): Promise<string> {
-  const baseDir = path.join(
-    process.cwd(),
-    "public",
-    "uploads",
-    "evidencias",
-    idAsignacion,
-  );
-  await fs.mkdir(baseDir, { recursive: true });
-  const ext = extForzada ?? (path.extname(file.name) || "").toLowerCase();
-  const nombre = `${prefijo}-${Date.now()}${ext || ""}`;
-  const buf = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(path.join(baseDir, nombre), buf);
-  return `/uploads/evidencias/${idAsignacion}/${nombre}`;
+  tipo: "imagen" | "pdf",
+): Promise<{ nombre: string; mime: string; buffer: Buffer }> {
+  const maxBytes = tipo === "imagen" ? MAX_IMAGEN_BYTES : MAX_PDF_BYTES;
+  const maxMB = tipo === "imagen" ? 5 : 10;
+
+  if (file.size > maxBytes) {
+    throw new Error(`El ${tipo} supera el tamaño máximo (${maxMB} MB)`);
+  }
+
+  const mime = file.type;
+  if (tipo === "imagen" && !mime.startsWith("image/")) {
+    throw new Error("El archivo de imagen debe ser una imagen válida");
+  }
+  if (tipo === "pdf" && mime !== "application/pdf") {
+    throw new Error("El archivo PDF debe ser un PDF válido");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return {
+    nombre: file.name,
+    mime,
+    buffer,
+  };
 }
 
 export async function completarAsignacion(
@@ -117,20 +122,26 @@ export async function completarAsignacion(
   if (list.length === 0) throw new Error("Asignación no encontrada");
   const idDefensa = list[0].idDefensa;
 
-  let urlImagen: string | null = null;
+  let imagenNombre: string | null = null;
+  let imagenMime: string | null = null;
+  let imagenArchivo: Buffer | null = null;
+
   if (evidencia.imagen && evidencia.imagen.size > 0) {
-    if (evidencia.imagen.size > MAX_IMAGEN_BYTES) {
-      throw new Error("La imagen supera el tamaño máximo (5 MB)");
-    }
-    urlImagen = await guardarArchivo(evidencia.imagen, id, "acta");
+    const imgData = await guardarEvidenciaEnBD(evidencia.imagen, id, "imagen");
+    imagenNombre = imgData.nombre;
+    imagenMime = imgData.mime;
+    imagenArchivo = imgData.buffer;
   }
 
-  let urlPdf: string | null = null;
+  let pdfNombre: string | null = null;
+  let pdfMime: string | null = null;
+  let pdfArchivo: Buffer | null = null;
+
   if (evidencia.pdf && evidencia.pdf.size > 0) {
-    if (evidencia.pdf.size > MAX_PDF_BYTES) {
-      throw new Error("El PDF supera el tamaño máximo (10 MB)");
-    }
-    urlPdf = await guardarArchivo(evidencia.pdf, id, "informe", ".pdf");
+    const pdfData = await guardarEvidenciaEnBD(evidencia.pdf, id, "pdf");
+    pdfNombre = pdfData.nombre;
+    pdfMime = pdfData.mime;
+    pdfArchivo = pdfData.buffer;
   }
 
   await pool.query(
@@ -143,11 +154,21 @@ export async function completarAsignacion(
   );
 
   const comentarios = evidencia.comentarios?.trim() || null;
-  if (urlImagen || urlPdf || comentarios) {
+  if (imagenArchivo || pdfArchivo || comentarios) {
     await pool.query(
-      `INSERT INTO Evidencia (idAsignacion, urlImagen, urlPdf, comentarios, fechaSubida)
-       VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
-      [id, urlImagen, urlPdf, comentarios],
+      `INSERT INTO Evidencia 
+       (idAsignacion, imagenNombre, imagenMime, imagenArchivo, pdfNombre, pdfMime, pdfArchivo, comentarios, fechaSubida)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
+      [
+        id,
+        imagenNombre,
+        imagenMime,
+        imagenArchivo,
+        pdfNombre,
+        pdfMime,
+        pdfArchivo,
+        comentarios,
+      ],
     );
   }
 
@@ -165,11 +186,15 @@ export async function getEvidenciasDefensa(idDefensa: string | number) {
   const pool = getPool();
   const [rows] = await pool.query(
     `SELECT
+       e.idEvidencia,
        e.idAsignacion,
+       e.imagenNombre,
+       e.imagenMime,
+       e.pdfNombre,
+       e.pdfMime,
+       e.comentarios,
        e.urlImagen,
        e.urlPdf,
-       e.comentarios,
-       e.urlArchivo,
        DATE_FORMAT(e.fechaSubida, '%Y-%m-%dT%H:%i:%sZ') AS fechaSubida,
        ad.idDelegado,
        u.nombre   AS nombreDelegado,

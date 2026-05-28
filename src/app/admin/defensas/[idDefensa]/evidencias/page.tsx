@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 type Evidencia = {
+  idEvidencia: number | null;
   idAsignacion: number;
+  imagenNombre: string | null;
+  imagenMime: string | null;
+  pdfNombre: string | null;
+  pdfMime: string | null;
   urlImagen: string | null;
   urlPdf: string | null;
   comentarios: string | null;
@@ -26,13 +31,7 @@ type DefensaInfo = {
   apellidoDelegado: string | null;
 };
 
-const Icon = ({
-  d,
-  size = 18,
-}: {
-  d: React.ReactNode;
-  size?: number;
-}) => (
+const Icon = ({ d, size = 18 }: { d: React.ReactNode; size?: number }) => (
   <svg
     width={size}
     height={size}
@@ -224,17 +223,13 @@ export default function AdminEvidenciasPage() {
                 <span className="evid-meta__label">
                   <Icon d={icons.clock} size={11} /> Hora
                 </span>
-                <span className="evid-meta__value">
-                  {fHora(defensa.fecha)}
-                </span>
+                <span className="evid-meta__value">{fHora(defensa.fecha)}</span>
               </div>
               <div className="evid-meta__item">
                 <span className="evid-meta__label">
                   <Icon d={icons.pin} size={11} /> Lugar
                 </span>
-                <span className="evid-meta__value">
-                  {defensa.lugar || "-"}
-                </span>
+                <span className="evid-meta__value">{defensa.lugar || "-"}</span>
               </div>
               {defensa.nombreDelegado && (
                 <div className="evid-meta__item">
@@ -309,7 +304,19 @@ export default function AdminEvidenciasPage() {
                   </span>
                   Imagen del acta
                 </div>
-                {e.urlImagen ? (
+                {e.idEvidencia && e.imagenMime ? (
+                  <a
+                    href={`/api/evidencias/${e.idEvidencia}/imagen`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="evid-image-wrap"
+                  >
+                    <img
+                      src={`/api/evidencias/${e.idEvidencia}/imagen`}
+                      alt="Acta de la defensa"
+                    />
+                  </a>
+                ) : e.urlImagen ? (
                   <a
                     href={e.urlImagen}
                     target="_blank"
@@ -330,7 +337,17 @@ export default function AdminEvidenciasPage() {
                   </span>
                   Informe (PDF)
                 </div>
-                {e.urlPdf ? (
+                {e.idEvidencia && e.pdfMime ? (
+                  <a
+                    className="evid-pdf-btn"
+                    href={`/api/evidencias/${e.idEvidencia}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Icon d={icons.pdf} size={16} />
+                    Abrir informe PDF
+                  </a>
+                ) : e.urlPdf ? (
                   <a
                     className="evid-pdf-btn"
                     href={e.urlPdf}
