@@ -79,9 +79,8 @@ const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 async function guardarEvidenciaEnBD(
   file: File,
-  idAsignacion: string,
   tipo: "imagen" | "pdf",
-): Promise<{ nombre: string; mime: string; buffer: Buffer }> {
+): Promise<string> {
   const maxBytes = tipo === "imagen" ? MAX_IMAGEN_BYTES : MAX_PDF_BYTES;
   const maxMB = tipo === "imagen" ? 5 : 10;
 
@@ -97,12 +96,7 @@ async function guardarEvidenciaEnBD(
     throw new Error("El archivo PDF debe ser un PDF válido");
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  return {
-    nombre: file.name,
-    mime,
-    buffer,
-  };
+  return `${tipo}: ${file.name} (${mime}, ${file.size} bytes)`;
 }
 
 export async function completarAsignacion(
@@ -122,26 +116,16 @@ export async function completarAsignacion(
   if (list.length === 0) throw new Error("Asignación no encontrada");
   const idDefensa = list[0].idDefensa;
 
-  let imagenNombre: string | null = null;
-  let imagenMime: string | null = null;
-  let imagenArchivo: Buffer | null = null;
+  const imagenesInfo: string[] = [];
 
   if (evidencia.imagen && evidencia.imagen.size > 0) {
-    const imgData = await guardarEvidenciaEnBD(evidencia.imagen, id, "imagen");
-    imagenNombre = imgData.nombre;
-    imagenMime = imgData.mime;
-    imagenArchivo = imgData.buffer;
+    const info = await guardarEvidenciaEnBD(evidencia.imagen, "imagen");
+    imagenesInfo.push(info);
   }
 
-  let pdfNombre: string | null = null;
-  let pdfMime: string | null = null;
-  let pdfArchivo: Buffer | null = null;
-
   if (evidencia.pdf && evidencia.pdf.size > 0) {
-    const pdfData = await guardarEvidenciaEnBD(evidencia.pdf, id, "pdf");
-    pdfNombre = pdfData.nombre;
-    pdfMime = pdfData.mime;
-    pdfArchivo = pdfData.buffer;
+    const info = await guardarEvidenciaEnBD(evidencia.pdf, "pdf");
+    imagenesInfo.push(info);
   }
 
   await pool.query(
@@ -154,20 +138,18 @@ export async function completarAsignacion(
   );
 
   const comentarios = evidencia.comentarios?.trim() || null;
-  if (imagenArchivo || pdfArchivo || comentarios) {
+  const archivosDesc =
+    imagenesInfo.length > 0 ? imagenesInfo.join(" | ") : null;
+  const urlImagen = imagenesInfo.length > 0 ? "evidencia-recibida" : null;
+
+  if (archivosDesc || comentarios) {
     await pool.query(
-      `INSERT INTO Evidencia 
-       (idAsignacion, imagenNombre, imagenMime, imagenArchivo, pdfNombre, pdfMime, pdfArchivo, comentarios, fechaSubida)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
+      `INSERT INTO Evidencia (idAsignacion, urlImagen, comentarios, fechaSubida)
+       VALUES (?, ?, ?, UTC_TIMESTAMP())`,
       [
         id,
-        imagenNombre,
-        imagenMime,
-        imagenArchivo,
-        pdfNombre,
-        pdfMime,
-        pdfArchivo,
-        comentarios,
+        urlImagen,
+        `${archivosDesc ? archivosDesc + " | " : ""}${comentarios || ""}`.trim(),
       ],
     );
   }
@@ -186,15 +168,9 @@ export async function getEvidenciasDefensa(idDefensa: string | number) {
   const pool = getPool();
   const [rows] = await pool.query(
     `SELECT
-       e.idEvidencia,
        e.idAsignacion,
-       e.imagenNombre,
-       e.imagenMime,
-       e.pdfNombre,
-       e.pdfMime,
-       e.comentarios,
        e.urlImagen,
-       e.urlPdf,
+       e.comentarios,
        DATE_FORMAT(e.fechaSubida, '%Y-%m-%dT%H:%i:%sZ') AS fechaSubida,
        ad.idDelegado,
        u.nombre   AS nombreDelegado,
