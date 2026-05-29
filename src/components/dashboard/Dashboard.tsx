@@ -2345,7 +2345,10 @@ function VistaAdminDelegados() {
   const cargar = () => {
     setLoading(true);
     setError("");
-    fetch(`${API}/admin/delegados/detalle`)
+    fetch(`${API}/admin/delegados/detalle?_=${Date.now()}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    })
       .then((r) => r.json())
       .then((d) => {
         if (d.ok) setDelegados(d.delegados || []);
@@ -2993,7 +2996,10 @@ export default function Dashboard() {
 
   const cargarDelegados = () => {
     if (!usuario || usuario.rol !== 0) return;
-    fetch(`${API}/admin/delegados/detalle`)
+    fetch(`${API}/admin/delegados/detalle?_=${Date.now()}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    })
       .then((r) => r.json())
       .then((d) => {
         if (d.ok) setDelegados(d.delegados || []);
