@@ -1701,22 +1701,6 @@ function VistaAdminDefensas({
                                 : d.motivoRechazo}
                             </p>
                           ) : null}
-                          {estadoAdminDefensa(d).toLowerCase() ===
-                            "completada" && (
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title="Ver evidencias"
-                              aria-label="Ver evidencias"
-                              onClick={() =>
-                                router.push(
-                                  `/admin/defensas/${d.idDefensa}/evidencias`,
-                                )
-                              }
-                            >
-                              <Ico d={icons.doc} size={16} />
-                            </button>
-                          )}
                         </div>
                       </td>
                       <td>
