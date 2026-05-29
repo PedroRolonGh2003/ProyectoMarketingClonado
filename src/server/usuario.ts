@@ -40,7 +40,13 @@ export async function cambiarPassword(
     return { ok: false as const, mensaje: "Usuario no encontrado" };
   }
   const { comparePassword, hashPassword } = await import("@/lib/password");
-  const coincide = await comparePassword(actual, list[0].hashContrasena);
+  const hashGuardado = String(list[0].hashContrasena ?? "");
+  // Soporta contraseñas bcrypt (empiezan con $2) y texto plano (legado),
+  // igual que loginUsuario, para no romper cuentas antiguas.
+  const esBcrypt = hashGuardado.startsWith("$2");
+  const coincide = esBcrypt
+    ? await comparePassword(actual, hashGuardado)
+    : actual === hashGuardado;
   if (!coincide) {
     return { ok: false as const, mensaje: "Contraseña actual incorrecta" };
   }
