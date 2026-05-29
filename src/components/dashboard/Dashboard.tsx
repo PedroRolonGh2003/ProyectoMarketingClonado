@@ -1711,16 +1711,36 @@ function VistaAdminDefensas({
                             title={
                               esDefensaCompletada(d)
                                 ? "No se puede reasignar una defensa completada"
-                                : "Asignar"
+                                : estadoAdminDefensa(d).toLowerCase() ===
+                                    "aceptada"
+                                  ? "Reasignar (el delegado ya aceptó)"
+                                  : "Asignar"
                             }
                             onClick={() => {
                               if (esDefensaCompletada(d)) return;
+                              if (
+                                estadoAdminDefensa(d).toLowerCase() ===
+                                "aceptada"
+                              ) {
+                                const nombreDel = d.nombreDelegado
+                                  ? `${d.nombreDelegado} ${d.apellidoDelegado ?? ""}`.trim()
+                                  : "El delegado asignado";
+                                if (
+                                  !window.confirm(
+                                    `${nombreDel} ya aceptó esta defensa. ¿Querés reasignarla a otro delegado?`,
+                                  )
+                                ) {
+                                  return;
+                                }
+                              }
                               setModalAsignar(d);
                               setBusqDelegado("");
                               setDelegadoSel(null);
                             }}
                           >
-                            Asignar
+                            {estadoAdminDefensa(d).toLowerCase() === "aceptada"
+                              ? "Reasignar"
+                              : "Asignar"}
                           </button>
                           <button
                             className="btn-danger btn-sm"
