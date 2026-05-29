@@ -1649,9 +1649,9 @@ body {
   border: 1px solid #ffc107;
 }
 .badge--aceptada {
-  background: #d1e7dd;
-  color: #0a5c36;
-  border: 1px solid #a3cfbb;
+  background: #cff4fc;
+  color: #055160;
+  border: 1px solid #9eeaf9;
 }
 .badge--rechazada {
   background: #f8d7da;
