@@ -1395,10 +1395,12 @@ function VistaAdminDefensas({
     return matchBusq && matchDel && matchEstado;
   });
 
-  const delegadosFiltrados = delegados.filter((d) =>
-    `${d.nombre} ${d.apellido}`
-      .toLowerCase()
-      .includes(busqDelegado.toLowerCase()),
+  const delegadosFiltrados = delegados.filter(
+    (d) =>
+      Number(d.activo) !== 0 &&
+      `${d.nombre} ${d.apellido}`
+        .toLowerCase()
+        .includes(busqDelegado.toLowerCase()),
   );
 
   const handleAsignar = async () => {
