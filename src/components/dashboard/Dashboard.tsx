@@ -1705,43 +1705,30 @@ function VistaAdminDefensas({
                       </td>
                       <td>
                         <div className="acciones-row">
-                          <button
-                            className={`btn-primary btn-sm ${esDefensaCompletada(d) ? "btn-disabled" : ""}`}
-                            disabled={esDefensaCompletada(d)}
-                            title={
-                              esDefensaCompletada(d)
-                                ? "No se puede reasignar una defensa completada"
-                                : estadoAdminDefensa(d).toLowerCase() ===
-                                    "aceptada"
-                                  ? "Reasignar (el delegado ya aceptó)"
-                                  : "Asignar"
-                            }
-                            onClick={() => {
-                              if (esDefensaCompletada(d)) return;
-                              if (
-                                estadoAdminDefensa(d).toLowerCase() ===
-                                "aceptada"
-                              ) {
-                                const nombreDel = d.nombreDelegado
-                                  ? `${d.nombreDelegado} ${d.apellidoDelegado ?? ""}`.trim()
-                                  : "El delegado asignado";
-                                if (
-                                  !window.confirm(
-                                    `${nombreDel} ya aceptó esta defensa. ¿Querés reasignarla a otro delegado?`,
-                                  )
-                                ) {
-                                  return;
+                          {(() => {
+                            const bloqueaAsignar =
+                              esDefensaCompletada(d) ||
+                              estadoAdminDefensa(d).toLowerCase() === "aceptada";
+                            return (
+                              <button
+                                className={`btn-primary btn-sm ${bloqueaAsignar ? "btn-disabled" : ""}`}
+                                disabled={bloqueaAsignar}
+                                title={
+                                  bloqueaAsignar
+                                    ? "No se puede reasignar esta defensa"
+                                    : "Asignar"
                                 }
-                              }
-                              setModalAsignar(d);
-                              setBusqDelegado("");
-                              setDelegadoSel(null);
-                            }}
-                          >
-                            {estadoAdminDefensa(d).toLowerCase() === "aceptada"
-                              ? "Reasignar"
-                              : "Asignar"}
-                          </button>
+                                onClick={() => {
+                                  if (bloqueaAsignar) return;
+                                  setModalAsignar(d);
+                                  setBusqDelegado("");
+                                  setDelegadoSel(null);
+                                }}
+                              >
+                                Asignar
+                              </button>
+                            );
+                          })()}
                           <button
                             className="btn-danger btn-sm"
                             onClick={() => handleEliminar(d.idDefensa)}
