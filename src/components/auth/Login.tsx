@@ -35,6 +35,8 @@ export default function Login() {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
         body: JSON.stringify({ correo, password }),
       });
       const data = await res.json().catch(() => null);

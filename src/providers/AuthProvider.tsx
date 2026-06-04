@@ -9,14 +9,27 @@ import {
   useState,
 } from "react";
 import type { UsuarioSesion } from "@/types";
+import { isUsuarioSesionValido } from "@/lib/usuario-sesion";
 
-const STORAGE_KEY = "col_marketing_usuario";
+/** Claves legacy; se eliminan al restaurar o cerrar sesión. */
+const LEGACY_STORAGE_KEYS = ["col_marketing_usuario"] as const;
+
+function clearLegacyClientStorage() {
+  for (const key of LEGACY_STORAGE_KEYS) {
+    try {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    } catch {
+      /* ignorar */
+    }
+  }
+}
 
 type AuthContextValue = {
   usuario: UsuarioSesion | null;
   loading: boolean;
   login: (u: UsuarioSesion) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -26,28 +39,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (raw) setUsuario(JSON.parse(raw) as UsuarioSesion);
-    } catch {
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-    setLoading(false);
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      clearLegacyClientStorage();
+
+      try {
+        const res = await fetch("/api/session", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+
+        if (cancelled) return;
+
+        if (
+          res.ok &&
+          data?.ok === true &&
+          isUsuarioSesionValido(data.usuario)
+        ) {
+          setUsuario(data.usuario);
+        } else {
+          setUsuario(null);
+          clearLegacyClientStorage();
+        }
+      } catch {
+        if (!cancelled) {
+          setUsuario(null);
+          clearLegacyClientStorage();
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback((u: UsuarioSesion) => {
+    if (!isUsuarioSesionValido(u)) return;
     setUsuario(u);
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    clearLegacyClientStorage();
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await fetch("/api/logout", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
+    } catch {
+      /* continuar limpieza local */
+    }
     setUsuario(null);
-    sessionStorage.removeItem(STORAGE_KEY);
+    clearLegacyClientStorage();
+    window.location.href = "/login";
   }, []);
 
   const value = useMemo(
     () => ({ usuario, loading, login, logout }),
-    [usuario, loading, login, logout]
+    [usuario, loading, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

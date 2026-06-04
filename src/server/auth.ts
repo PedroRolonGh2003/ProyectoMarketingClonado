@@ -59,3 +59,34 @@ export async function loginUsuario(
     },
   };
 }
+
+export async function obtenerUsuarioSesionPorId(
+  idUsuario: number,
+): Promise<UsuarioSesion | null> {
+  if (!Number.isInteger(idUsuario) || idUsuario <= 0) return null;
+
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT idUsuario, rol, nombre, apellido, correo, telefono, activo
+     FROM Usuario
+     WHERE idUsuario = ? AND activo = 1
+     LIMIT 1`,
+    [idUsuario],
+  );
+
+  const list = rows as Record<string, unknown>[];
+  if (list.length === 0) return null;
+
+  const usuario = list[0];
+  const rolNombre = Number(usuario.rol) === 0 ? "Admin" : "Delegado";
+
+  return {
+    id: Number(usuario.idUsuario),
+    nombre: String(usuario.nombre),
+    apellido: String(usuario.apellido),
+    correo: String(usuario.correo),
+    telefono: usuario.telefono != null ? String(usuario.telefono) : "",
+    rol: Number(usuario.rol),
+    rolNombre,
+  };
+}
