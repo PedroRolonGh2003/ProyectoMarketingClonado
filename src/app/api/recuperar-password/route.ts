@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import {
-  ERROR_ENVIO_RECUPERACION,
-  enviarCorreoRecuperacion,
-} from "@/lib/email";
+import { SmtpEmailError, enviarCorreoRecuperacion } from "@/lib/email";
 
 export const runtime = "nodejs";
+
+const MENSAJE_GENERICO_OK =
+  "Si el correo está registrado, enviaremos un código de recuperación.";
 
 export async function POST(request: Request) {
   const { correo } = await request.json();
@@ -22,9 +22,8 @@ export async function POST(request: Request) {
     );
     const list = rows as { idUsuario: number; nombre: string }[];
 
-    // Siempre respondemos ok para no revelar si el correo existe
     if (list.length === 0) {
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, mensaje: MENSAJE_GENERICO_OK });
     }
 
     const usuario = list[0];
@@ -46,16 +45,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    if (err instanceof Error && err.message === ERROR_ENVIO_RECUPERACION) {
-      console.error("[recuperar-password] fallo SMTP:", err);
-      return NextResponse.json(
-        {
-          ok: false,
-          mensaje:
-            "No se pudo enviar el correo de recuperación. Revisa la configuración del correo SMTP.",
-        },
-        { status: 503 },
-      );
+    if (err instanceof SmtpEmailError) {
+      console.error("[recuperar-password] fallo SMTP:", err.message);
+      return NextResponse.json({ ok: false, mensaje: err.message }, { status: 503 });
     }
 
     console.error("[recuperar-password]", err);

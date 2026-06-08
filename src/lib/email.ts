@@ -1,7 +1,28 @@
 import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
 
 export const ERROR_ENVIO_RECUPERACION =
   "No se pudo enviar el correo de recuperación. Verifica la configuración SMTP.";
+
+export type SmtpConfigCheck = {
+  hostExists: boolean;
+  port: number;
+  secure: boolean;
+  userExists: boolean;
+  passExists: boolean;
+  passLength: number;
+  fromExists: boolean;
+  userSource: "SMTP_USER" | "EMAIL_USER" | "none";
+  passSource: "SMTP_PASS" | "EMAIL_PASS" | "none";
+  userMasked: string;
+};
+
+export class SmtpEmailError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SmtpEmailError";
+  }
+}
 
 type SmtpConfig = {
   host: string;
@@ -12,12 +33,75 @@ type SmtpConfig = {
   from: string;
 };
 
-function getSmtpConfig(): SmtpConfig {
-  const user = (process.env.SMTP_USER || process.env.EMAIL_USER || "").trim();
-  const pass = (process.env.SMTP_PASS || process.env.EMAIL_PASS || "")
-    .trim()
-    .replace(/\s+/g, "");
+function maskUser(user: string): string {
+  if (!user) return "(vacío)";
+  const at = user.indexOf("@");
+  if (at <= 0) return `${user.slice(0, 2)}***`;
+  return `${user.slice(0, 2)}***${user.slice(at)}`;
+}
 
+function resolveUser(): { value: string; source: SmtpConfigCheck["userSource"] } {
+  const smtp = process.env.SMTP_USER?.trim();
+  if (smtp) return { value: smtp, source: "SMTP_USER" };
+  const legacy = process.env.EMAIL_USER?.trim();
+  if (legacy) return { value: legacy, source: "EMAIL_USER" };
+  return { value: "", source: "none" };
+}
+
+function resolvePass(): { value: string; source: SmtpConfigCheck["passSource"] } {
+  const smtp = process.env.SMTP_PASS?.trim();
+  if (smtp) {
+    return { value: smtp.replace(/\s+/g, ""), source: "SMTP_PASS" };
+  }
+  const legacy = process.env.EMAIL_PASS?.trim();
+  if (legacy) {
+    return { value: legacy.replace(/\s+/g, ""), source: "EMAIL_PASS" };
+  }
+  return { value: "", source: "none" };
+}
+
+export function getSmtpConfigCheck(): SmtpConfigCheck {
+  const { value: user, source: userSource } = resolveUser();
+  const { value: pass, source: passSource } = resolvePass();
+  const host = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
+  const port = Number(process.env.SMTP_PORT || 465);
+  const secure = process.env.SMTP_SECURE !== "false";
+  const from = process.env.SMTP_FROM?.trim() || "";
+
+  return {
+    hostExists: host.length > 0,
+    port,
+    secure,
+    userExists: user.length > 0,
+    passExists: pass.length > 0,
+    passLength: pass.length,
+    fromExists: from.length > 0,
+    userSource,
+    passSource,
+    userMasked: maskUser(user),
+  };
+}
+
+function logSmtpConfigCheck(): SmtpConfigCheck {
+  const check = getSmtpConfigCheck();
+  console.log("SMTP CONFIG CHECK:", {
+    hostExists: check.hostExists,
+    port: check.port,
+    secure: check.secure,
+    userExists: check.userExists,
+    passExists: check.passExists,
+    passLength: check.passLength,
+    fromExists: check.fromExists,
+    userSource: check.userSource,
+    passSource: check.passSource,
+    userMasked: check.userMasked,
+  });
+  return check;
+}
+
+function getSmtpConfig(): SmtpConfig {
+  const { value: user } = resolveUser();
+  const { value: pass } = resolvePass();
   const host = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
   const port = Number(process.env.SMTP_PORT || 465);
   const secure = process.env.SMTP_SECURE !== "false";
@@ -27,11 +111,13 @@ function getSmtpConfig(): SmtpConfig {
   return { host, port, secure, user, pass, from };
 }
 
-function getTransporter() {
+function createTransporter(): Transporter {
   const { host, port, secure, user, pass } = getSmtpConfig();
 
   if (!user || !pass) {
-    throw new Error(ERROR_ENVIO_RECUPERACION);
+    throw new SmtpEmailError(
+      "Faltan variables SMTP_USER/SMTP_PASS (o EMAIL_USER/EMAIL_PASS en .env.local).",
+    );
   }
 
   return nodemailer.createTransport({
@@ -40,6 +126,89 @@ function getTransporter() {
     secure,
     auth: { user, pass },
   });
+}
+
+function mapSmtpError(err: unknown, context: "VERIFY" | "SEND"): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: string }).code ?? "")
+      : "";
+
+  console.error(`SMTP ${context} ERROR:`, err);
+
+  if (
+    msg.includes("535") ||
+    msg.includes("BadCredentials") ||
+    code === "EAUTH"
+  ) {
+    return "Credenciales SMTP inválidas. Verifica que estés usando una contraseña de aplicación de Gmail.";
+  }
+
+  if (msg.includes("EAUTH")) {
+    return "Autenticación SMTP fallida. Revisa SMTP_USER y SMTP_PASS.";
+  }
+
+  if (
+    msg.includes("ECONNECTION") ||
+    msg.includes("ETIMEDOUT") ||
+    msg.includes("ESOCKET") ||
+    code === "ECONNECTION" ||
+    code === "ETIMEDOUT"
+  ) {
+    return "No se pudo conectar al servidor SMTP. Revisa host, puerto y conexión.";
+  }
+
+  if (msg.includes("Invalid login")) {
+    return "Login SMTP inválido. Gmail requiere contraseña de aplicación, no la contraseña normal.";
+  }
+
+  if (context === "VERIFY") {
+    return "No se pudo conectar con el servidor de correo. Revisa las credenciales SMTP.";
+  }
+
+  return ERROR_ENVIO_RECUPERACION;
+}
+
+export async function diagnoseSmtp(): Promise<{
+  ok: boolean;
+  config: SmtpConfigCheck;
+  mensaje: string;
+}> {
+  const config = logSmtpConfigCheck();
+
+  if (!config.userExists || !config.passExists) {
+    return {
+      ok: false,
+      config,
+      mensaje:
+        "Faltan credenciales SMTP. Configura SMTP_USER y SMTP_PASS en .env.local y reinicia el servidor.",
+    };
+  }
+
+  if (config.passLength !== 16 && config.userMasked.includes("@gmail")) {
+    console.warn(
+      "[email] SMTP PASS length is",
+      config.passLength,
+      "- Gmail app passwords are usually 16 characters.",
+    );
+  }
+
+  try {
+    const transporter = createTransporter();
+    await transporter.verify();
+    return {
+      ok: true,
+      config,
+      mensaje: "Conexión SMTP verificada correctamente.",
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      config,
+      mensaje: mapSmtpError(err, "VERIFY"),
+    };
+  }
 }
 
 export async function enviarCorreoRecuperacion({
@@ -51,8 +220,15 @@ export async function enviarCorreoRecuperacion({
   codigo: string;
   nombre: string;
 }) {
+  logSmtpConfigCheck();
   const { from } = getSmtpConfig();
-  const transporter = getTransporter();
+  const transporter = createTransporter();
+
+  try {
+    await transporter.verify();
+  } catch (err) {
+    throw new SmtpEmailError(mapSmtpError(err, "VERIFY"));
+  }
 
   const text = [
     `Hola ${nombre},`,
@@ -93,7 +269,6 @@ export async function enviarCorreoRecuperacion({
     `,
     });
   } catch (err) {
-    console.error("[email] Error al enviar correo de recuperación:", err);
-    throw new Error(ERROR_ENVIO_RECUPERACION);
+    throw new SmtpEmailError(mapSmtpError(err, "SEND"));
   }
 }
