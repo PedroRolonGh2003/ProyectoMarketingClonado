@@ -73,7 +73,13 @@ export default function Login() {
       if (data.ok) {
         setVista("codigo");
       } else {
-        setError(data.mensaje || data.error || "Error al enviar el código");
+        const raw = String(data.mensaje || data.error || "");
+        const esErrorSmtp = /535|BadCredentials|gsmtp|Invalid login|EAUTH/i.test(raw);
+        setError(
+          esErrorSmtp
+            ? "No se pudo enviar el correo de recuperación. Intenta nuevamente o contacta al administrador."
+            : raw || "Error al enviar el código",
+        );
       }
     } catch (err) {
       if (err instanceof ZodError) {

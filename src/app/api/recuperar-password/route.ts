@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import {
-  EmailConfigError,
-  EmailDeliveryError,
-  enviarCodigoRecuperacion,
+  ERROR_ENVIO_RECUPERACION,
+  enviarCorreoRecuperacion,
 } from "@/lib/email";
 
 export const runtime = "nodejs";
@@ -15,12 +14,11 @@ export async function POST(request: Request) {
   }
 
   const pool = getPool();
-  const correoNorm = String(correo).trim();
 
   try {
     const [rows] = await pool.query(
       "SELECT idUsuario, nombre FROM Usuario WHERE correo = ? AND activo = 1",
-      [correoNorm],
+      [correo.trim().toLowerCase()],
     );
     const list = rows as { idUsuario: number; nombre: string }[];
 
@@ -40,16 +38,29 @@ export async function POST(request: Request) {
       [usuario.idUsuario, codigo, expira, codigo, expira],
     );
 
-    await enviarCodigoRecuperacion(correoNorm, usuario.nombre, codigo);
+    await enviarCorreoRecuperacion({
+      to: correo.trim(),
+      codigo,
+      nombre: usuario.nombre,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    if (err instanceof EmailConfigError || err instanceof EmailDeliveryError) {
-      return NextResponse.json({ ok: false, mensaje: err.message }, { status: 503 });
+    if (err instanceof Error && err.message === ERROR_ENVIO_RECUPERACION) {
+      console.error("[recuperar-password] fallo SMTP:", err);
+      return NextResponse.json(
+        {
+          ok: false,
+          mensaje:
+            "No se pudo enviar el correo de recuperación. Revisa la configuración del correo SMTP.",
+        },
+        { status: 503 },
+      );
     }
+
     console.error("[recuperar-password]", err);
     return NextResponse.json(
-      { ok: false, mensaje: "Error al enviar el código. Intenta de nuevo más tarde." },
+      { ok: false, mensaje: "Error interno al procesar la solicitud." },
       { status: 500 },
     );
   }
