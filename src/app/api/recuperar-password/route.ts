@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { enviarCodigoRecuperacion } from "@/lib/email";
+import {
+  EmailConfigError,
+  EmailDeliveryError,
+  enviarCodigoRecuperacion,
+} from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -11,11 +15,12 @@ export async function POST(request: Request) {
   }
 
   const pool = getPool();
+  const correoNorm = String(correo).trim();
 
   try {
     const [rows] = await pool.query(
       "SELECT idUsuario, nombre FROM Usuario WHERE correo = ? AND activo = 1",
-      [correo.trim().toLowerCase()],
+      [correoNorm],
     );
     const list = rows as { idUsuario: number; nombre: string }[];
 
@@ -35,11 +40,17 @@ export async function POST(request: Request) {
       [usuario.idUsuario, codigo, expira, codigo, expira],
     );
 
-    await enviarCodigoRecuperacion(correo.trim(), usuario.nombre, codigo);
+    await enviarCodigoRecuperacion(correoNorm, usuario.nombre, codigo);
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error interno";
-    return NextResponse.json({ ok: false, mensaje }, { status: 500 });
+    if (err instanceof EmailConfigError || err instanceof EmailDeliveryError) {
+      return NextResponse.json({ ok: false, mensaje: err.message }, { status: 503 });
+    }
+    console.error("[recuperar-password]", err);
+    return NextResponse.json(
+      { ok: false, mensaje: "Error al enviar el código. Intenta de nuevo más tarde." },
+      { status: 500 },
+    );
   }
 }

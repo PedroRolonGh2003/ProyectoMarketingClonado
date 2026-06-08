@@ -1,12 +1,74 @@
 import nodemailer from "nodemailer";
 
+export class EmailConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmailConfigError";
+  }
+}
+
+export class EmailDeliveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmailDeliveryError";
+  }
+}
+
+function getEmailCredentials(): { user: string; pass: string } {
+  const user = process.env.EMAIL_USER?.trim();
+  // Las contraseñas de aplicación de Gmail se copian con espacios; hay que unirlas.
+  const pass = process.env.EMAIL_PASS?.trim().replace(/\s+/g, "");
+
+  if (!user || !pass) {
+    throw new EmailConfigError(
+      "El servicio de correo no está configurado. Contacta al administrador.",
+    );
+  }
+
+  return { user, pass };
+}
+
+function mapSmtpError(err: unknown): EmailDeliveryError {
+  const msg = err instanceof Error ? err.message : String(err);
+
+  if (
+    msg.includes("535") ||
+    msg.includes("BadCredentials") ||
+    msg.includes("Username and Password not accepted") ||
+    msg.includes("EAUTH") ||
+    msg.includes("Invalid login")
+  ) {
+    return new EmailDeliveryError(
+      "No se pudo enviar el correo. Revisa EMAIL_USER y EMAIL_PASS (contraseña de aplicación de Gmail, sin espacios).",
+    );
+  }
+
+  if (
+    msg.includes("ECONNECTION") ||
+    msg.includes("ETIMEDOUT") ||
+    msg.includes("ESOCKET")
+  ) {
+    return new EmailDeliveryError(
+      "No se pudo conectar con el servidor de correo. Intenta de nuevo más tarde.",
+    );
+  }
+
+  return new EmailDeliveryError(
+    "No se pudo enviar el correo de recuperación. Intenta de nuevo más tarde.",
+  );
+}
+
 export function getTransporter() {
+  const { user, pass } = getEmailCredentials();
+  const host = process.env.EMAIL_SMTP_HOST?.trim() || "smtp.gmail.com";
+  const port = Number(process.env.EMAIL_SMTP_PORT || 465);
+  const secure = process.env.EMAIL_SMTP_SECURE !== "false";
+
   return nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
+    host,
+    port,
+    secure,
+    auth: { user, pass },
   });
 }
 
@@ -15,12 +77,15 @@ export async function enviarCodigoRecuperacion(
   nombre: string,
   codigo: string,
 ) {
+  const { user } = getEmailCredentials();
   const transporter = getTransporter();
-  await transporter.sendMail({
-    from: `"ColMarketing" <${process.env.EMAIL_USER}>`,
-    to: destinatario,
-    subject: "Recuperación de contraseña",
-    html: `
+
+  try {
+    await transporter.sendMail({
+      from: `"ColMarketing" <${user}>`,
+      to: destinatario,
+      subject: "Recuperación de contraseña",
+      html: `
       <div style="font-family: 'DM Sans', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f0f2f5; border-radius: 16px;">
         <div style="background: #1d3d6b; border-radius: 12px; padding: 28px; text-align: center; margin-bottom: 24px;">
           <h1 style="color: #ffffff; margin: 0; font-size: 1.3rem;">Colegio de Marketing</h1>
@@ -41,5 +106,12 @@ export async function enviarCodigoRecuperacion(
         </div>
       </div>
     `,
-  });
+    });
+  } catch (err) {
+    if (err instanceof EmailConfigError || err instanceof EmailDeliveryError) {
+      throw err;
+    }
+    console.error("[email] Error al enviar código de recuperación:", err);
+    throw mapSmtpError(err);
+  }
 }
